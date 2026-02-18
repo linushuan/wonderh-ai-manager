@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "wonderh-ai-manager",
+  "version": "1.0.0",
+  "description": "REXOW Local-First AI Manager",
+  "permissions": ["nativeMessaging", "tabs", "storage"],
+  "host_permissions": ["*://chatgpt.com/*", "*://gemini.google.com/*", "*://claude.ai/*"],
+  "background": { "scripts": ["entrypoints/background.js"] },
+  "action": { "default_title": "Open REXOW Dashboard" },
+  "browser_specific_settings": {
+    "gecko": { "id": "wonderh-ai@manager.local" }
+  }
+}

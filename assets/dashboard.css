@@ -1,0 +1,342 @@
+:root {
+    --bg-app: #050505;
+    --bg-sidebar: #0f0f11;
+    --bg-panel: rgba(20, 20, 23, 0.6);
+    --border: #27272a;
+
+    /* + 按鈕改紫色 */
+    --accent: #38bdf8;
+    --accent-glow: rgba(168, 85, 247, 0.25);
+    --accent-hover: rgba(168, 85, 247, 0.12);
+
+    --text-main: #e4e4e7;
+    --text-muted: #a1a1aa;
+    --tree-line: #3f3f46;
+    --sidebar-width: 300px;
+    --right-panel-width: 380px;
+    --row-height: 40px;
+    --active-color: #ec4899;
+}
+
+* { box-sizing: border-box; outline: none; }
+body {
+    margin: 0; padding: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: var(--bg-app); color: var(--text-main);
+    height: 100vh; overflow: hidden;
+}
+
+/* --- Layout --- */
+.app-shell {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 1fr 0px;
+    height: 100%;
+    transition: grid-template-columns 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.app-shell.right-open { grid-template-columns: var(--sidebar-width) 1fr var(--right-panel-width); }
+.app-shell.left-collapsed { grid-template-columns: 0px 1fr 0px; }
+.app-shell.left-collapsed.right-open { grid-template-columns: 0px 1fr var(--right-panel-width); }
+
+/* --- Sidebar --- */
+.sidebar {
+    background: var(--bg-sidebar); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+    position: relative; white-space: nowrap;
+}
+.sidebar-header {
+    height: 60px; padding: 0 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+}
+.brand-text { font-weight: 800; font-size: 20px; letter-spacing: 1px; color: #fff; cursor: pointer; }
+.header-actions { display: flex; gap: 8px; align-items: center; }
+
+/* + 按鈕 — 紫色 */
+.btn-circle-add {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid var(--accent); background: transparent; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: 0.2s;
+}
+.btn-circle-add:hover { background: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
+.btn-circle-add:active { background: #0284c7; } /* sky-600，比 sky-400 深一階 */
+
+.btn-icon-toggle {
+    background: transparent; border: none; color: var(--text-muted);
+    cursor: pointer; padding: 4px; border-radius: 4px; display: flex; transition: 0.2s;
+}
+.btn-icon-toggle:hover { color: #fff; background: rgba(255,255,255,0.05); }
+.btn-icon-toggle:active { background: rgba(255,255,255,0.1); transform: scale(0.95); }
+
+.floating-expand-btn {
+    position: absolute; left: 16px; top: 16px; z-index: 100;
+    background: rgba(0,0,0,0.5); border: 1px solid var(--border); color: #fff;
+    padding: 8px; border-radius: 8px; cursor: pointer; backdrop-filter: blur(5px);
+}
+
+/* --- Tree --- */
+.folder-tree { flex: 1; overflow-y: auto; padding: 10px 0; }
+.folder-tree ul { list-style: none; padding: 0; margin: 0; padding-left: 24px; }
+.tree-node { position: relative; }
+.tree-node::before {
+    content: ""; position: absolute; left: -14px; top: 0; bottom: 0;
+    width: 2px; background: var(--tree-line);
+}
+.tree-node:last-child::before { height: 12px; bottom: auto; }
+.tree-node::after {
+    content: ""; position: absolute; left: -14px; top: 12px;
+    width: 14px; height: 14px; background: transparent;
+    border-bottom: 2px solid var(--tree-line); border-left: 2px solid var(--tree-line);
+    border-bottom-left-radius: 12px;
+}
+#folderTree > ul > .tree-node::before,
+#folderTree > ul > .tree-node::after { display: none; }
+#folderTree > ul { padding-left: 10px; }
+
+.node-content {
+    display: flex; align-items: center; height: var(--row-height);
+    padding: 0 10px; margin: 0 8px 0 0;
+    border-radius: 0 8px 8px 0; cursor: pointer;
+    color: var(--text-muted); font-size: 14px; font-weight: 500;
+    transition: 0.1s; position: relative; z-index: 1;
+}
+.node-content:hover { background: rgba(255,255,255,0.04); color: #fff; }
+
+/* Active 狀態：保留圖示自身顏色，只加左邊框和背景 */
+.node-content.active {
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    border-left: 3px solid var(--active-color);
+}
+/*
+ * 關鍵修正：active 時的 icon 不再強制覆蓋 stroke，
+ * 只加 glow，讓 style="stroke:..." 的原始顏色保留
+ */
+.node-content.active .node-icon {
+    filter: drop-shadow(0 0 6px var(--active-color));
+    /* 不設 stroke: var(--active-color) !important — 讓 inline style 生效 */
+}
+
+.node-icon { width: 22px; height: 22px; margin-right: 10px; stroke-width: 2px; flex-shrink: 0; }
+.node-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s; }
+.node-content:hover .node-actions { opacity: 1; }
+.action-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; border-radius: 4px; }
+.action-btn:hover { background: var(--accent-hover); color: var(--accent); }
+
+/* --- Workspace --- */
+.workspace { position: relative; overflow: hidden; display: flex; flex-direction: column; }
+.welcome-container {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    background-color: #000;
+    background-image:
+    radial-gradient(circle at 20% 30%, rgba(99,102,241,0.15) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(236,72,153,0.15) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(168,85,247,0.1) 0%, transparent 60%);
+    background-size: 150% 150%;
+    animation: nebula 20s ease infinite alternate;
+    z-index: 0;
+}
+@keyframes nebula { 0% { background-position: 0% 0%; } 100% { background-position: 100% 100%; } }
+.welcome-container.has-bg { background-image: none !important; }
+.welcome-content { text-align: center; z-index: 1; }
+.welcome-logo { width: 100px; margin-bottom: 20px; filter: drop-shadow(0 0 20px rgba(236,72,153,0.3)); }
+.welcome-content h1 { font-size: 28px; font-weight: 800; letter-spacing: 1px; margin-bottom: 10px; }
+
+/* Content View — overflow:hidden 讓子元素自己管理捲動 */
+.content-view {
+    flex: 1; display: flex; flex-direction: column;
+    padding: 30px; overflow: hidden;
+}
+
+/* folder-header 本身下方留更多空間 */
+.folder-header {
+    display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+    margin-bottom: 20px;  /* ← 從 8px 加到 20px */
+    flex-shrink: 0;
+}
+
+/* Notes section 底部的間距加大，把 CONTENTS 往下推 */
+.folder-dashboard .panel-section:first-of-type {
+    flex: 2;
+    min-height: 100px;
+    margin-bottom: 48px;  /* ← 從 36px 加到 48px，效果最明顯 */
+}
+.folder-header h1 { margin: 0; font-size: 26px; font-weight: 700; }
+.folder-header .node-icon { width: 32px; height: 32px; }
+
+.folder-dashboard .panel-section {
+    display: flex; flex-direction: column;
+    min-height: 0; overflow: hidden;
+}
+
+/* NOTES — flex:2，佔較小比例 */
+.folder-dashboard .panel-section:first-of-type {
+    flex: 2;
+    min-height: 100px;
+    margin-bottom: 36px; /* ← 加大間距，讓 CONTENTS 明顯在下方 */
+}
+.folder-dashboard .panel-section:first-of-type textarea {
+    flex: 1; min-height: 0;
+}
+
+/* CONTENTS — flex:8，佔大部分空間 */
+.folder-dashboard .panel-section:last-of-type {
+    flex: 8; min-height: 0;
+}
+
+/* 外層：恢復 grid 網格佈局（卡片排列） */
+.folder-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); /* 從 160px 加到 200px */
+    gap: 14px;
+    padding-top: 10px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    align-content: start;
+}
+
+.grid-item {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;      /* 從 12px/16px 加到 14px/18px */
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: 0.2s;
+    min-height: 56px;        /* 從 48px 加到 56px */
+}
+.grid-item:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.08);
+}
+.grid-item:active { transform: scale(0.97); }
+
+.grid-item svg {
+    width: 20px; height: 20px;  /* 從 18px 加到 20px */
+    flex-shrink: 0;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+.grid-item span {
+    font-size: 13px;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+.grid-item:first-child { border-top: 1px solid var(--border); }
+
+
+/* --- Chat Layout --- */
+.chat-wrapper { flex: 1; display: flex; flex-direction: column; position: relative; }
+.chat-header-bar {
+    height: 60px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 20px; flex-shrink: 0;
+}
+
+/* Toggle 按鈕：X = 開啟狀態，旋轉45° = + = 關閉狀態 */
+.btn-toggle-rotate {
+    width: 36px; height: 36px;
+    background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 50%; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.btn-toggle-rotate:hover { color: #fff; border-color: #fff; }
+.btn-toggle-rotate svg { transition: transform 0.4s; transform: rotate(0deg); }
+.btn-toggle-rotate.closed { border-color: var(--accent); color: var(--accent); }
+.btn-toggle-rotate.closed svg { transform: rotate(45deg); }
+
+.chat-interface { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.chat-placeholder { border: 2px dashed var(--border); padding: 40px; border-radius: 16px; text-align: center; }
+
+/* --- Right Panel --- */
+.right-panel {
+    background: #0c0c0e; border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+}
+.right-header {
+    height: 60px; padding: 0 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px; font-weight: 700; color: var(--text-muted); flex-shrink: 0;
+}
+.right-content {
+    padding: 24px; flex: 1; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 30px;
+}
+.right-content .panel-section:first-child { flex: 4; display: flex; flex-direction: column; min-height: 150px; }
+.right-content .panel-section:last-child {
+    flex: 6; display: flex; flex-direction: column; min-height: 200px;
+    border-top: 1px solid var(--border); padding-top: 20px;
+}
+
+.panel-section label {
+    display: block; font-size: 11px; font-weight: 700;
+    margin-bottom: 12px; color: var(--text-muted); letter-spacing: 0.5px;
+}
+#summaryDisplay {
+border: 1px solid var(--border); border-radius: 8px; padding: 16px;
+background: rgba(0,0,0,0.3); flex: 1; overflow-y: auto;
+font-size: 14px; color: var(--text-muted); line-height: 1.6;
+}
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.btn-xs {
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+    color: var(--text-main); font-size: 11px; padding: 6px 12px;
+    border-radius: 6px; cursor: pointer; transition: 0.2s;
+}
+.btn-xs:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+textarea {
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px; color: var(--text-main);
+    font-size: 14px; line-height: 1.6; resize: none; font-family: inherit;
+}
+.glass-input { background: var(--bg-panel); }
+
+/* 折疊/展開箭頭按鈕 */
+.btn-chevron {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    transition: color 0.15s;
+    /* 箭頭預設指右（折疊狀態） */
+}
+.btn-chevron svg {
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: rotate(0deg); /* 指右 = 折疊 */
+}
+/* 展開狀態：箭頭轉 90 度朝下 */
+.btn-chevron.expanded svg {
+    transform: rotate(90deg);
+}
+.btn-chevron:hover { color: #fff; }
+
+/* 沒有子節點時，佔位但不可見（保持對齊） */
+.btn-chevron.invisible {
+    visibility: hidden;
+    pointer-events: none;
+}

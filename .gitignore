@@ -1,0 +1,8 @@
+# Local Data
+*.json_bak
+~/wonderh_ai_data.json
+
+# Linux/System
+.DS_Store
+__pycache__/
+*.log

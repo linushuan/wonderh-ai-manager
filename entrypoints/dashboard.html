@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REXOW AI Manager</title>
+    <link rel="stylesheet" href="../assets/dashboard.css">
+</head>
+<body>
+    <div class="app-shell" id="appShell">
+        <aside class="sidebar" id="leftSidebar">
+            <!-- SIDEBAR HEADER: remove the layout-toggle icon button -->
+            <div class="sidebar-header">
+                <div class="brand-text" id="brandHome">REXOW</div>
+                <div class="header-actions">
+                    <button id="addRootFolder" class="btn-circle-add" title="New Project">
+                        <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" fill="none">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                    <!-- REMOVED: toggleLeftSidebar button -->
+                </div>
+            </div>
+            <nav id="folderTree" class="folder-tree"></nav>
+        </aside>
+
+        <button id="expandSidebarBtn" class="floating-expand-btn" style="display: none;">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>
+        </button>
+
+        <main class="workspace" id="mainWorkspace">
+            <div id="welcomeScreen" class="welcome-container">
+                <div class="welcome-content">
+                    <img src="../assets/logo.png" alt="Logo" class="welcome-logo">
+                    <h1>WonderH-AI-Manager</h1>
+                    <p>Select a node to initiate research workflow.</p>
+                </div>
+            </div>
+            <div id="contentView" class="content-view" style="display: none;"></div>
+        </main>
+
+        <!-- RIGHT PANEL: remove the close button, keep only the title -->
+        <aside class="right-panel" id="rightPanel">
+            <div class="right-header">
+                <span id="rightPanelTitle">NOTES</span>
+                <!-- REMOVED: the static #toggleRightPanel button that did nothing -->
+            </div>
+            <div class="right-content" id="rightPanelContent">
+                <div class="panel-section">
+                    <label>RESEARCH NOTES</label>
+                    <textarea id="chatNotes" placeholder="Enter notes..."></textarea>
+                </div>
+                <div class="panel-section" id="summarySection">
+                    <div class="section-header">
+                        <label>AI SUMMARY</label>
+                    </div>
+                    <div id="summaryDisplay" class="markdown-preview">No summary.</div>
+                </div>
+            </div>
+        </aside>
+    </div>
+    <script src="dashboard.js"></script>
+</body>
+</html>
