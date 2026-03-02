@@ -13,6 +13,9 @@ const mockConnectNative = jest.fn(() => ({
 }));
 const mockTabsQuery = jest.fn();
 const mockTabsSendMessage = jest.fn();
+const mockTabsUpdate = jest.fn((tabId, opts, cb) => {
+    if (cb) cb({ id: tabId, windowId: 1 });
+});
 
 global.chrome = {
     runtime: {
@@ -25,7 +28,11 @@ global.chrome = {
     tabs: {
         query: mockTabsQuery,
         sendMessage: mockTabsSendMessage,
+        update: mockTabsUpdate,
         create: jest.fn()
+    },
+    windows: {
+        update: jest.fn((windowId, opts, cb) => { if (cb) cb(); })
     },
     action: { onClicked: { addListener: jest.fn() } }
 };
@@ -44,13 +51,19 @@ global.chrome.runtime.onMessage = {
 };
 
 beforeEach(() => {
+    jest.useFakeTimers();
     jest.resetModules();
     messageListeners = [];
     mockPostMessage.mockClear();
     mockTabsQuery.mockClear();
     mockTabsSendMessage.mockClear();
+    mockTabsUpdate.mockClear();
     mockConnectNative.mockClear();
     require('../entrypoints/background.js');
+});
+
+afterEach(() => {
+    jest.useRealTimers();
 });
 
 // ── SAVE_TO_DISK ─────────────────────────────────────────────
@@ -83,6 +96,9 @@ test('TRIGGER_EXTRACT finds matching tab and sends EXTRACT_CONTENT', () => {
         {},
         sendResponse
     );
+
+    // Advance past activateTab's 300ms delay
+    jest.advanceTimersByTime(500);
 
     expect(mockTabsSendMessage).toHaveBeenCalledWith(
         42,
@@ -125,6 +141,8 @@ test('TRIGGER_EXTRACT matches tab with URL prefix', () => {
         sendResponse
     );
 
+    jest.advanceTimersByTime(500);
+
     expect(mockTabsSendMessage).toHaveBeenCalledWith(7, expect.anything(), expect.any(Function));
 });
 
@@ -143,6 +161,8 @@ test('SEND_MESSAGE finds matching tab and forwards message to content script', (
         {},
         sendResponse
     );
+
+    jest.advanceTimersByTime(500);
 
     expect(mockTabsSendMessage).toHaveBeenCalledWith(
         10,

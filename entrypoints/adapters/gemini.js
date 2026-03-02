@@ -126,7 +126,8 @@ export default class GeminiAdapter {
     }
 
     /**
-     * Send a message to Gemini by injecting text into the input field and clicking send.
+     * Send a message to Gemini by injecting text into the input field and pressing Enter.
+     * Uses keyboard events instead of button clicks for better framework compatibility.
      * @param {string} text - The message to send
      */
     sendMessage(text) {
@@ -141,28 +142,61 @@ export default class GeminiAdapter {
 
         if (!inputEl) throw new Error("Gemini: could not find input field. The page may have changed.");
 
+        // Focus the input first
+        inputEl.focus();
+
         // Set text content
         if (inputEl.tagName === 'TEXTAREA') {
             inputEl.value = text;
             inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+            inputEl.dispatchEvent(new Event('change', { bubbles: true }));
         } else {
-            // contenteditable div
+            // contenteditable div — set text and dispatch events
             inputEl.innerHTML = `<p>${text}</p>`;
             inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+            inputEl.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
-        // Find and click the send button
-        const sendBtn =
-            document.querySelector('.send-button') ||
-            document.querySelector('button[aria-label="Send message"]') ||
-            document.querySelector('button.send-button') ||
-            document.querySelector('[data-test-id="send-button"]');
-
-        if (!sendBtn) throw new Error("Gemini: could not find send button.");
-
-        // Small delay to let Gemini's UI register the input
+        // Use Enter key to submit — this triggers Gemini's internal event handlers
+        // more reliably than clicking the send button
         setTimeout(() => {
-            sendBtn.click();
-        }, 100);
+            const enterEvent = new KeyboardEvent('keydown', {
+                key: 'Enter',
+                code: 'Enter',
+                keyCode: 13,
+                which: 13,
+                bubbles: true,
+                cancelable: true
+            });
+            inputEl.dispatchEvent(enterEvent);
+
+            // Also try clicking the send button as a fallback
+            const sendBtn =
+                document.querySelector('.send-button') ||
+                document.querySelector('button[aria-label="Send message"]') ||
+                document.querySelector('button.send-button') ||
+                document.querySelector('[data-test-id="send-button"]');
+            if (sendBtn && !sendBtn.disabled) {
+                sendBtn.click();
+            }
+        }, 200);
+    }
+
+    /**
+     * Prepare the page for content extraction by scrolling to the bottom.
+     * This forces Gemini's virtual scroller to render the latest messages.
+     */
+    prepareForExtract() {
+        // Scroll the conversation to the very bottom
+        const scroller =
+            document.querySelector('infinite-scroller') ||
+            document.querySelector('.conversation-container') ||
+            document.querySelector('[role="main"]');
+
+        if (scroller) {
+            scroller.scrollTop = scroller.scrollHeight;
+        }
+        // Also scroll window itself
+        window.scrollTo(0, document.body.scrollHeight);
     }
 }

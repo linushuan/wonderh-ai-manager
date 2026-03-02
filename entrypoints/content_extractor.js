@@ -77,6 +77,13 @@ async function getAdapter() {
 async function runAdapter() {
     const adapter = await getAdapter();
 
+    // Prepare the page for extraction (e.g., scroll to bottom to render latest messages)
+    if (typeof adapter.prepareForExtract === 'function') {
+        adapter.prepareForExtract();
+        // Small wait for the DOM to update after scrolling
+        await new Promise(r => setTimeout(r, 500));
+    }
+
     let result;
     try {
         result = adapter.extract();
