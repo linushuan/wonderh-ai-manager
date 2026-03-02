@@ -5,24 +5,35 @@
 console.log("[REXOW] Content Extractor Loaded");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    // Inject a floating "Back to REXOW" button for easy navigation
+    function injectRexowButton() {
+        if (document.getElementById('rexow-float-btn')) return;
+        const btn = document.createElement('button');
+        btn.id = 'rexow-float-btn';
+        btn.innerText = 'Back to REXOW';
+        Object.assign(btn.style, {
+            position: 'fixed', bottom: '20px', right: '20px', zIndex: 999999,
+            backgroundColor: '#4f46e5', color: '#fff', border: 'none',
+            borderRadius: '8px', padding: '10px 16px', cursor: 'pointer',
+            fontWeight: 'bold', fontFamily: 'sans-serif', boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+        });
+        btn.onclick = () => chrome.runtime.sendMessage({ type: "SWITCH_TO_REXOW" });
+        document.body.appendChild(btn);
+    }
+
     if (request.type === "EXTRACT_CONTENT") {
-        (async () => {
-            try {
-                const data = await runAdapter();
-                sendResponse({ status: "success", data });
-            } catch (e) {
-                console.error("[REXOW] Extraction error:", e);
-                sendResponse({
-                    status: "error",
-                    msg: e.message || "Unknown extraction error.",
-                    detail: "The AI site layout may have changed. Please wait for a REXOW update."
-                });
-            }
-        })();
+        injectRexowButton();
+        runAdapter().then(result => {
+            sendResponse({ status: "success", data: result });
+        }).catch(err => {
+            console.error("[REXOW] Extraction error:", err);
+            sendResponse({ status: "error", msg: err.message || "Failed to extract content" });
+        });
         return true;
     }
 
     if (request.type === "SEND_MESSAGE") {
+        injectRexowButton();
         (async () => {
             try {
                 const adapter = await getAdapter();
@@ -30,8 +41,39 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     sendResponse({ status: "error", msg: "This adapter does not support sending messages." });
                     return;
                 }
+
+                // 1. Send the message
                 adapter.sendMessage(request.text);
-                sendResponse({ status: "success" });
+
+                // 2. Wait for AI to finish responding (uses MutationObserver)
+                if (typeof adapter.waitForResponse === 'function') {
+                    console.log('[REXOW] Waiting for AI response...');
+                    await adapter.waitForResponse();
+                    console.log('[REXOW] AI response detected, extracting...');
+                } else {
+                    // Fallback: simple delay for adapters without waitForResponse
+                    await new Promise(r => setTimeout(r, 5000));
+                }
+
+                // 3. Scroll to bottom to ensure latest content is rendered
+                if (typeof adapter.prepareForExtract === 'function') {
+                    adapter.prepareForExtract();
+                    await new Promise(r => setTimeout(r, 500));
+                }
+
+                // 4. Extract updated content
+                let result;
+                try {
+                    result = adapter.extract();
+                } catch (err) {
+                    // Extraction failed but message was sent
+                    sendResponse({ status: "success", sent: true, data: null });
+                    return;
+                }
+
+                if (!Array.isArray(result.messages)) result.messages = [];
+
+                sendResponse({ status: "success", sent: true, data: result });
             } catch (e) {
                 console.error("[REXOW] Send message error:", e);
                 sendResponse({

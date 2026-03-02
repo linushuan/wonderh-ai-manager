@@ -126,14 +126,14 @@ export default class GeminiAdapter {
     }
 
     /**
-     * Send a message to Gemini by injecting text into the input field and pressing Enter.
-     * Uses keyboard events instead of button clicks for better framework compatibility.
+     * Send a message to Gemini by injecting text into the input field and submitting.
+     * Tries send button first, falls back to Enter key. Only uses ONE method to
+     * prevent duplicate messages.
      * @param {string} text - The message to send
      */
     sendMessage(text) {
         if (!text?.trim()) throw new Error("Cannot send empty message.");
 
-        // Gemini uses a rich-text editor — try multiple selectors
         const inputEl =
             document.querySelector('rich-textarea .ql-editor') ||
             document.querySelector('.ql-editor[contenteditable="true"]') ||
@@ -142,52 +142,111 @@ export default class GeminiAdapter {
 
         if (!inputEl) throw new Error("Gemini: could not find input field. The page may have changed.");
 
-        // Focus the input first
         inputEl.focus();
 
-        // Set text content
         if (inputEl.tagName === 'TEXTAREA') {
             inputEl.value = text;
             inputEl.dispatchEvent(new Event('input', { bubbles: true }));
             inputEl.dispatchEvent(new Event('change', { bubbles: true }));
         } else {
-            // contenteditable div — set text and dispatch events
             inputEl.innerHTML = `<p>${text}</p>`;
             inputEl.dispatchEvent(new Event('input', { bubbles: true }));
             inputEl.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
-        // Use Enter key to submit — this triggers Gemini's internal event handlers
-        // more reliably than clicking the send button
+        // Submit using ONE method only to avoid duplicate sends
         setTimeout(() => {
-            const enterEvent = new KeyboardEvent('keydown', {
-                key: 'Enter',
-                code: 'Enter',
-                keyCode: 13,
-                which: 13,
-                bubbles: true,
-                cancelable: true
-            });
-            inputEl.dispatchEvent(enterEvent);
-
-            // Also try clicking the send button as a fallback
             const sendBtn =
                 document.querySelector('.send-button') ||
                 document.querySelector('button[aria-label="Send message"]') ||
                 document.querySelector('button.send-button') ||
                 document.querySelector('[data-test-id="send-button"]');
+
             if (sendBtn && !sendBtn.disabled) {
                 sendBtn.click();
+            } else {
+                inputEl.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Enter', code: 'Enter',
+                    keyCode: 13, which: 13,
+                    bubbles: true, cancelable: true
+                }));
             }
         }, 200);
     }
 
     /**
+     * Wait for Gemini to finish its AI response using MutationObserver.
+     * Detects when new model-response elements appear and the DOM stabilises.
+     * Works even when the tab is in the background.
+     *
+     * @param {number} maxWaitMs - Maximum time to wait (default 120s for thinking models)
+     * @returns {Promise<void>} Resolves when response is complete or timeout
+     */
+    waitForResponse(maxWaitMs = 120000) {
+        return new Promise((resolve) => {
+            const startCount = document.querySelectorAll('model-response').length;
+            let settled = false;
+            let settleTimer = null;
+            const SETTLE_DELAY = 1000; // No mutations for 1s = response done
+
+            // Watch for any DOM changes in the conversation area
+            const target =
+                document.querySelector('infinite-scroller') ||
+                document.querySelector('.conversation-container') ||
+                document.querySelector('[role="main"]') ||
+                document.body;
+
+            const observer = new MutationObserver(() => {
+                // Reset settle timer on every mutation
+                if (settleTimer) clearTimeout(settleTimer);
+
+                // Check if a new model-response has appeared
+                const currentCount = document.querySelectorAll('model-response').length;
+                if (currentCount > startCount) {
+                    // New response detected — wait for it to stop changing
+                    settleTimer = setTimeout(() => {
+                        finish();
+                    }, SETTLE_DELAY);
+                }
+            });
+
+            observer.observe(target, {
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
+
+            // Absolute timeout (for very long thinking models)
+            const maxTimer = setTimeout(() => {
+                console.log('[REXOW] waitForResponse: max timeout reached');
+                finish();
+            }, maxWaitMs);
+
+            // Also do a periodic check in case mutations were missed
+            const checkInterval = setInterval(() => {
+                const currentCount = document.querySelectorAll('model-response').length;
+                if (currentCount > startCount && !settleTimer) {
+                    settleTimer = setTimeout(() => finish(), SETTLE_DELAY);
+                }
+            }, 3000);
+
+            function finish() {
+                if (settled) return;
+                settled = true;
+                observer.disconnect();
+                clearTimeout(maxTimer);
+                clearTimeout(settleTimer);
+                clearInterval(checkInterval);
+                resolve();
+            }
+        });
+    }
+
+    /**
      * Prepare the page for content extraction by scrolling to the bottom.
-     * This forces Gemini's virtual scroller to render the latest messages.
+     * Forces Gemini's virtual scroller to render the latest messages.
      */
     prepareForExtract() {
-        // Scroll the conversation to the very bottom
         const scroller =
             document.querySelector('infinite-scroller') ||
             document.querySelector('.conversation-container') ||
@@ -196,7 +255,6 @@ export default class GeminiAdapter {
         if (scroller) {
             scroller.scrollTop = scroller.scrollHeight;
         }
-        // Also scroll window itself
         window.scrollTo(0, document.body.scrollHeight);
     }
 }

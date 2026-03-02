@@ -224,7 +224,6 @@ function handleSendMessage() {
     const text = input?.value?.trim();
     if (!text) return;
 
-    // Clear input immediately
     input.value = '';
 
     // Optimistically add user message bubble
@@ -239,13 +238,62 @@ function handleSendMessage() {
         contentArea.scrollTop = contentArea.scrollHeight;
     }
 
-    // Send to AI via background → content script
+    // Disable UI while waiting
     const sendBtn = document.getElementById('btnSendMessage');
+    const syncBtn = document.getElementById('btnFetchContent');
     if (sendBtn) sendBtn.disabled = true;
+    if (syncBtn) { syncBtn.innerText = "Waiting for AI..."; syncBtn.disabled = true; }
 
+    // Set a 60-second timeout warning
+    const timeoutWarning = setTimeout(() => {
+        if (contentArea && syncBtn && syncBtn.disabled) {
+            const warningBubble = document.createElement('div');
+            warningBubble.className = 'msg-bubble';
+            warningBubble.style.background = 'linear-gradient(145deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.05) 100%)';
+            warningBubble.style.borderLeft = '3px solid rgb(245, 158, 11)';
+            warningBubble.style.backdropFilter = 'blur(10px)';
+            warningBubble.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)';
+            warningBubble.innerHTML = `
+                <div class="msg-role" style="color: rgb(245, 158, 11); display: flex; align-items: center; gap: 6px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    SYSTEM
+                </div>
+                <div class="msg-text" style="color: rgba(255,255,255,0.9);">
+                    <p style="margin-bottom: 12px; font-size: 13px; line-height: 1.5;">The AI is taking longer than usual to respond (over 60 seconds). It might be thinking deeply, or waiting for a CAPTCHA.</p>
+                    <button id="btnSwitchToAiTab" style="
+                        background: rgba(245, 158, 11, 0.2); 
+                        color: rgb(253, 230, 138); 
+                        border: 1px solid rgba(245, 158, 11, 0.3); 
+                        padding: 6px 14px; 
+                        border-radius: 6px; 
+                        cursor: pointer;
+                        font-family: inherit;
+                        font-size: 12px;
+                        font-weight: 500;
+                        transition: all 0.2s ease;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                    " onmouseover="this.style.background='rgba(245, 158, 11, 0.3)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(245, 158, 11, 0.2)'; this.style.color='rgb(253, 230, 138)';">
+                        Switch to AI Tab
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                    </button>
+                </div>`;
+            contentArea.appendChild(warningBubble);
+            contentArea.scrollTop = contentArea.scrollHeight;
+
+            document.getElementById('btnSwitchToAiTab')?.addEventListener('click', () => {
+                chrome.runtime.sendMessage({ type: "SWITCH_TO_AI_TAB", url });
+            });
+        }
+    }, 60000);
+
+    // SEND_MESSAGE now waits for AI response + extracts content before returning
     chrome.runtime.sendMessage({ type: "SEND_MESSAGE", url, text }, (res) => {
+        clearTimeout(timeoutWarning);
         void chrome.runtime.lastError;
         if (sendBtn) sendBtn.disabled = false;
+        if (syncBtn) { syncBtn.innerText = "SYNC CONTENT"; syncBtn.disabled = false; }
 
         if (!res || res.status !== "success") {
             const msg = res?.msg || "Failed to send message.";
@@ -253,38 +301,16 @@ function handleSendMessage() {
             return;
         }
 
-        // Auto-resync after a delay to get the AI's response
-        setTimeout(() => {
-            triggerResync(id, url);
-        }, 4000);
-    });
-}
-
-function triggerResync(chatId, url) {
-    const btn = document.getElementById('btnFetchContent');
-    if (btn) {
-        btn.innerText = "Syncing...";
-        btn.disabled = true;
-    }
-
-    chrome.runtime.sendMessage({ type: "TRIGGER_EXTRACT", url }, (res) => {
-        void chrome.runtime.lastError;
-        if (btn) {
-            btn.disabled = false;
-            btn.innerText = "SYNC CONTENT";
+        // If the response includes extracted data, update the UI directly
+        if (res.data) {
+            const { content, platform, messages = [] } = res.data;
+            updateChat(id, { content: content || "", platform: platform || null, messages });
+            if (contentArea) {
+                contentArea.innerHTML = buildMessagesHtml(messages, content);
+                contentArea.scrollTop = contentArea.scrollHeight;
+            }
+            renderTree();
         }
-        const contentArea = document.getElementById('chatContentArea');
-        if (!res || res.status !== "success") return;
-
-        const { title, content, platform, messages = [] } = res.data ?? {};
-        if (!content && !messages.length) return;
-
-        updateChat(chatId, { content: content || "", platform: platform || null, messages });
-        if (contentArea) {
-            contentArea.innerHTML = buildMessagesHtml(messages, content);
-            contentArea.scrollTop = contentArea.scrollHeight;
-        }
-        renderTree();
     });
 }
 

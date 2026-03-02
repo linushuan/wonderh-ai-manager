@@ -141,6 +141,30 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
             });
         });
         return true;
+    } else if (req.type === "SWITCH_TO_REXOW") {
+        const dashUrl = chrome.runtime.getURL("entrypoints/dashboard.html");
+        chrome.tabs.query({}, (tabs) => {
+            void chrome.runtime.lastError;
+            const target = tabs.find(t => t.url && t.url.startsWith(dashUrl));
+            if (target) {
+                chrome.tabs.update(target.id, { active: true });
+                if (target.windowId) chrome.windows.update(target.windowId, { focused: true });
+            }
+        });
+        sendResponse({ status: "ok" });
+        return true;
+    } else if (req.type === "SWITCH_TO_AI_TAB") {
+        if (!req.url) return true;
+        chrome.tabs.query({}, (tabs) => {
+            void chrome.runtime.lastError;
+            const target = tabs.find(t => t.url && t.url.startsWith(req.url));
+            if (target) {
+                chrome.tabs.update(target.id, { active: true });
+                if (target.windowId) chrome.windows.update(target.windowId, { focused: true });
+            }
+        });
+        sendResponse({ status: "ok" });
+        return true;
     }
 });
 
