@@ -13,10 +13,10 @@ global.chrome = {
 
 // Must re-import after mock setup
 let store;
-beforeEach(async () => {
+beforeEach(() => {
     jest.resetModules();
     mockSendMessage.mockClear();
-    store = await import('../../entrypoints/dashboard/store.js');
+    store = require('../entrypoints/dashboard/store.js');
     // Reset to clean state between tests
     store.setAppData({ folders: [], chats: [] });
 });
@@ -34,7 +34,8 @@ test('addFolder creates folder with UUID and correct parentId', () => {
 test('addFolder calls sync (sendMessage SAVE_TO_DISK)', () => {
     store.addFolder("Test", null);
     expect(mockSendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "SAVE_TO_DISK" })
+        expect.objectContaining({ type: "SAVE_TO_DISK" }),
+        expect.any(Function)
     );
 });
 
@@ -47,7 +48,7 @@ test('deleteFolder removes only target folder when no children', () => {
 });
 
 test('deleteFolder recursively removes all descendant folders', () => {
-    const root  = store.addFolder("Root", null);
+    const root = store.addFolder("Root", null);
     const child = store.addFolder("Child", root.id);
     const grand = store.addFolder("Grand", child.id);
 
@@ -56,7 +57,7 @@ test('deleteFolder recursively removes all descendant folders', () => {
 });
 
 test('deleteFolder removes all descendant chats', () => {
-    const root  = store.addFolder("Root", null);
+    const root = store.addFolder("Root", null);
     const child = store.addFolder("Child", root.id);
     store.addChat("Chat 1", root.id);
     store.addChat("Chat 2", child.id);
@@ -91,7 +92,8 @@ test('updateChat calls sync', () => {
     mockSendMessage.mockClear();
     store.updateChat(c.id, { content: "text" });
     expect(mockSendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "SAVE_TO_DISK" })
+        expect.objectContaining({ type: "SAVE_TO_DISK" }),
+        expect.any(Function)
     );
 });
 

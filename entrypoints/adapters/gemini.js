@@ -25,7 +25,37 @@ export default class GeminiAdapter {
             return { title, content: bodyText, platform: "gemini", messages: [] };
         }
 
-        const rawText   = scroller.innerText || '';
+        // Try to extract structured messages first
+        const messageNodes = scroller.querySelectorAll('user-query, model-response');
+        let messages = [];
+        let fullContent = [];
+
+        if (messageNodes.length > 0) {
+            for (const node of messageNodes) {
+                const role = node.tagName.toLowerCase() === 'user-query' ? 'user' : 'assistant';
+                const text = node.innerText?.trim() || '';
+
+                if (text) {
+                    messages.push({ role, text });
+                    fullContent.push(text);
+                }
+            }
+
+            const cleanText = fullContent.join('\n\n');
+            if (!cleanText) {
+                throw new Error("Gemini: conversation appears empty after extracting structured messages.");
+            }
+
+            return {
+                title,
+                content: cleanText, // Will be saved to DB by background script
+                platform: "gemini",
+                messages
+            };
+        }
+
+        // Fallback to raw text filtering if no structured nodes found
+        const rawText = scroller.innerText || '';
         const cleanText = rawText
             .split('\n')
             .map(l => l.trim())
@@ -41,7 +71,7 @@ export default class GeminiAdapter {
             title,
             content: cleanText,
             platform: "gemini",
-            messages: [] // Gemini doesn't expose clear role separators
+            messages: []
         };
     }
 }

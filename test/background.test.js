@@ -18,6 +18,7 @@ global.chrome = {
     runtime: {
         connectNative: mockConnectNative,
         sendMessage: jest.fn(),
+        onConnect: { addListener: jest.fn() },
         lastError: null,
         getURL: (p) => `chrome-extension://testid/${p}`
     },
@@ -49,7 +50,7 @@ beforeEach(() => {
     mockTabsQuery.mockClear();
     mockTabsSendMessage.mockClear();
     mockConnectNative.mockClear();
-    require('../../entrypoints/background.js');
+    require('../entrypoints/background.js');
 });
 
 // ── SAVE_TO_DISK ─────────────────────────────────────────────

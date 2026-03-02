@@ -3,13 +3,22 @@
  */
 
 let ChatGPTAdapter;
-beforeAll(async () => {
-    const mod = await import('../../../entrypoints/adapters/chatgpt.js');
-    ChatGPTAdapter = mod.default;
+beforeAll(() => {
+    const mod = require('../entrypoints/adapters/chatgpt.js');
+    ChatGPTAdapter = mod.default || mod;
 });
 
 function setDOM(html) {
     document.body.innerHTML = html;
+    // JSDOM doesn't implement innerText, which our adapters use.
+    // Polyfill it for all elements in the body
+    const elements = document.body.querySelectorAll('*');
+    for (const el of elements) {
+        Object.defineProperty(el, 'innerText', {
+            get() { return this.textContent; },
+            configurable: true
+        });
+    }
 }
 
 test('extracts messages with correct roles', () => {
@@ -36,27 +45,49 @@ test('throws when main element is missing', () => {
     expect(() => new ChatGPTAdapter().extract()).toThrow();
 });
 
-// ─────────────────────────────────────────────────────────────
-
 /**
  * tests/unit/adapters/gemini.test.js
  */
 let GeminiAdapter;
-beforeAll(async () => {
-    const mod = await import('../../../entrypoints/adapters/gemini.js');
-    GeminiAdapter = mod.default;
+beforeAll(() => {
+    const mod = require('../entrypoints/adapters/gemini.js');
+    GeminiAdapter = mod.default || mod;
 });
 
-test('filters noise lines from Gemini output', () => {
-    // jsdom doesn't support custom elements, so use a div with that class
-    document.body.innerHTML = `
+test('extracts structured messages with roles from custom elements', () => {
+    setDOM(`
+        <div id="infinite-scroller">
+            <user-query>What is the capital of France?</user-query>
+            <model-response>The capital of France is Paris.</model-response>
+        </div>`);
+
+    const orig = document.querySelector.bind(document);
+    jest.spyOn(document, 'querySelector').mockImplementation((sel) => {
+        if (sel === 'infinite-scroller') return document.getElementById('infinite-scroller');
+        return orig(sel);
+    });
+
+    const result = new GeminiAdapter().extract();
+    expect(result.platform).toBe("gemini");
+    expect(result.messages.length).toBe(2);
+    expect(result.messages[0]).toEqual({ role: "user", text: "What is the capital of France?" });
+    expect(result.messages[1]).toEqual({ role: "assistant", text: "The capital of France is Paris." });
+    expect(result.content).toContain("What is the capital of France?");
+    expect(result.content).toContain("The capital of France is Paris.");
+
+    jest.restoreAllMocks();
+});
+
+test('filters noise lines from Gemini output when structured elements are missing', () => {
+    // jsdom doesn't support custom elements nicely if not configured, but our fallback handles plain divs
+    setDOM(`
         <div id="infinite-scroller">
         Line 1
         Show drafts
         Actual content
         Regenerate
         More content
-        </div>`;
+        </div>`);
     // Patch querySelector for test
     const orig = document.querySelector.bind(document);
     jest.spyOn(document, 'querySelector').mockImplementation((sel) => {
@@ -64,6 +95,7 @@ test('filters noise lines from Gemini output', () => {
         return orig(sel);
     });
     const result = new GeminiAdapter().extract();
+    expect(result.messages).toEqual([]); // Fallback doesn't set roles
     expect(result.content).not.toContain("Show drafts");
     expect(result.content).not.toContain("Regenerate");
     expect(result.content).toContain("Actual content");
@@ -71,7 +103,7 @@ test('filters noise lines from Gemini output', () => {
 });
 
 test('throws when page content is too short', () => {
-    document.body.innerHTML = `<p>Hi</p>`;
+    setDOM(`<p>Hi</p>`);
     jest.spyOn(document, 'querySelector').mockReturnValue(null);
     expect(() => new GeminiAdapter().extract()).toThrow();
     jest.restoreAllMocks();
@@ -83,15 +115,15 @@ test('throws when page content is too short', () => {
  * tests/unit/adapters/claude.test.js
  */
 let ClaudeAdapter;
-beforeAll(async () => {
-    const mod = await import('../../../entrypoints/adapters/claude.js');
-    ClaudeAdapter = mod.default;
+beforeAll(() => {
+    const mod = require('../entrypoints/adapters/claude.js');
+    ClaudeAdapter = mod.default || mod;
 });
 
 test('extracts messages from .font-claude-message elements', () => {
-    document.body.innerHTML = `
+    setDOM(`
         <div class="font-claude-message">First message</div>
-        <div class="font-claude-message">Second message</div>`;
+        <div class="font-claude-message">Second message</div>`);
     const result = new ClaudeAdapter().extract();
     expect(result.content).toContain("First message");
     expect(result.content).toContain("Second message");
@@ -99,12 +131,12 @@ test('extracts messages from .font-claude-message elements', () => {
 });
 
 test('fallback to .grid-cols-1 when no font-claude-message', () => {
-    document.body.innerHTML = `<div class="grid-cols-1">Fallback content here</div>`;
+    setDOM(`<div class="grid-cols-1">Fallback content here</div>`);
     const result = new ClaudeAdapter().extract();
     expect(result.content).toContain("Fallback content");
 });
 
 test('throws when no recognisable structure', () => {
-    document.body.innerHTML = `<div class="unrelated">Nothing here</div>`;
+    setDOM(`<div class="unrelated">Nothing here</div>`);
     expect(() => new ClaudeAdapter().extract()).toThrow();
 });

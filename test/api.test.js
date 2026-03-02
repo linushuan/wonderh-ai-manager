@@ -10,14 +10,17 @@ global.chrome = {
             get: mockGet,
             set: mockSet
         }
+    },
+    runtime: {
+        lastError: null
     }
 };
 
 let api;
-beforeEach(async () => {
+beforeEach(() => {
     jest.resetModules();
     global.fetch = jest.fn();
-    api = await import('../../entrypoints/dashboard/api.js');
+    api = require('../entrypoints/dashboard/api.js');
 });
 
 // ── generateSummary ──────────────────────────────────────────
