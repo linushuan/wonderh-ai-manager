@@ -66,26 +66,23 @@ export function renderChatView(chat) {
     <div class="chat-wrapper">
     <div class="chat-header-bar">
     <span id="chatTitleDisplay" style="font-weight:600; font-size:15px;">${chat.name}</span>
-    <!-- toggleRightPanel click is handled by delegated listener in events.js -->
     <button id="toggleRightPanel" class="btn-toggle-rotate" title="Toggle Notes Panel">
     ${Icons.close}
     </button>
     </div>
 
-    <div class="chat-url-bar" style="display:flex; gap:8px; padding:12px 20px; border-bottom:1px solid var(--border); flex-shrink:0;">
+    <div class="chat-url-bar">
     <input
     id="urlInput"
     type="url"
     placeholder="Paste AI conversation URL..."
     value="${chat.url || ''}"
-    style="flex:1; background:var(--bg-panel); border:1px solid var(--border);
-    border-radius:6px; padding:8px 12px; color:var(--text-main);
-    font-size:13px; font-family:inherit;"
     />
+    <button id="btnOpenUrl" class="btn-open-url" title="Open in new tab">OPEN</button>
     <button id="btnFetchContent" class="btn-xs">SYNC CONTENT</button>
     </div>
 
-    <div id="chatContentArea" style="flex:1; overflow-y:auto; padding:20px;">
+    <div id="chatContentArea">
     ${renderMessagesHtml(chat.messages, chat.content)}
     </div>
     </div>`;
@@ -99,16 +96,17 @@ export function renderChatView(chat) {
 
 function renderMessagesHtml(messages, content) {
     if (messages && messages.length > 0) {
-        return messages.map(m => `
-        <div style="margin-bottom:20px;">
-        <div style="font-size:11px; font-weight:700; color:var(--text-muted);
-        letter-spacing:0.5px; margin-bottom:6px;">${(m.role || 'unknown').toUpperCase()}</div>
-        <div style="font-size:14px; line-height:1.7; white-space:pre-wrap;">${m.text || ''}</div>
-        </div>`
-        ).join('');
+        return messages.map(m => {
+            const roleClass = (m.role === 'user') ? 'msg-user' : 'msg-assistant';
+            return `
+            <div class="msg-bubble ${roleClass}">
+            <div class="msg-role">${(m.role || 'unknown').toUpperCase()}</div>
+            <div class="msg-text">${m.text || ''}</div>
+            </div>`;
+        }).join('');
     }
     if (content && content.trim()) {
-        return `<div style="font-size:14px; line-height:1.7; white-space:pre-wrap; padding:20px;">${content}</div>`;
+        return `<div class="content-raw">${content}</div>`;
     }
     return `<div style="text-align:center; padding:40px; color:var(--text-muted);">
     <p>No content synced yet.</p>

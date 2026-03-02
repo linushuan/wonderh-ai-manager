@@ -158,6 +158,19 @@ export function initEvents() {
         });
     });
 
+    // ── OPEN URL button ──────────────────────────────────────
+    document.getElementById('contentView').addEventListener('click', (e) => {
+        if (e.target.id !== 'btnOpenUrl') return;
+        const url = document.getElementById('urlInput')?.value?.trim();
+        if (!url) { alert('Please enter a URL first.'); return; }
+        try {
+            new URL(url);
+            window.open(url, '_blank');
+        } catch (_) {
+            alert('Invalid URL format.');
+        }
+    });
+
     // ── Right panel: notes ────────────────────────────────────
     document.getElementById('chatNotes')?.addEventListener('input', (e) => {
         const id = getCurrentId();
@@ -196,14 +209,17 @@ function showSyncError(msg, detail, container) {
 
 function buildMessagesHtml(messages, content) {
     if (Array.isArray(messages) && messages.length) {
-        return messages.map(m => `
-        <div style="margin-bottom:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:0.5px;margin-bottom:6px;">${(m.role || 'unknown').toUpperCase()}</div>
-        <div style="font-size:14px;line-height:1.7;white-space:pre-wrap;">${m.text || ''}</div>
-        </div>`).join('');
+        return messages.map(m => {
+            const roleClass = (m.role === 'user') ? 'msg-user' : 'msg-assistant';
+            return `
+            <div class="msg-bubble ${roleClass}">
+            <div class="msg-role">${(m.role || 'unknown').toUpperCase()}</div>
+            <div class="msg-text">${m.text || ''}</div>
+            </div>`;
+        }).join('');
     }
     if (content && content.trim()) {
-        return `<div style="font-size:14px;line-height:1.7;white-space:pre-wrap;padding:20px;">${content}</div>`;
+        return `<div class="content-raw">${content}</div>`;
     }
     return '<p style="color:var(--text-muted); text-align:center; padding:40px;">No messages found.</p>';
 }
