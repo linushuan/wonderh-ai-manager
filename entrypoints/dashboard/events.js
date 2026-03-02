@@ -32,12 +32,12 @@ export function initEvents() {
     // ── Sidebar tree clicks ───────────────────────────────────
     document.getElementById('folderTree').onclick = (e) => {
         const chevron = e.target.closest('.btn-chevron');
-        const btn     = e.target.closest('.action-btn');
-        const node    = e.target.closest('.node-content');
+        const btn = e.target.closest('.action-btn');
+        const node = e.target.closest('.node-content');
 
         if (chevron && !chevron.classList.contains('invisible')) {
             e.stopPropagation();
-            const id       = chevron.dataset.id;
+            const id = chevron.dataset.id;
             const expanded = getExpandedFolders();
             expanded.has(id) ? expanded.delete(id) : expanded.add(id);
             renderTree();
@@ -46,7 +46,7 @@ export function initEvents() {
 
         if (btn) {
             e.stopPropagation();
-            const id   = btn.dataset.id;
+            const id = btn.dataset.id;
             const type = btn.dataset.type || node?.dataset.type;
 
             if (btn.classList.contains('btn-add')) {
@@ -63,15 +63,15 @@ export function initEvents() {
 
             } else if (btn.classList.contains('btn-edit')) {
                 const item = type === 'folder'
-                ? getAppData().folders.find(x => x.id === id)
-                : getAppData().chats.find(x => x.id === id);
+                    ? getAppData().folders.find(x => x.id === id)
+                    : getAppData().chats.find(x => x.id === id);
                 if (!item) return;
                 const newName = prompt("Rename to:", item.name)?.trim();
                 if (!newName) return;
                 try {
                     type === 'folder'
-                    ? updateFolder(id, { name: newName })
-                    : updateChat(id, { name: newName });
+                        ? updateFolder(id, { name: newName })
+                        : updateChat(id, { name: newName });
                     renderTree();
                     if (getCurrentId() === id) renderMainView(id, type);
                 } catch (e) { alert("Could not rename: " + e.message); }
@@ -115,14 +115,14 @@ export function initEvents() {
         const id = getCurrentId();
         if (!id) return;
         if (e.target.id === 'mainNoteEditor') updateFolder(id, { notes: e.target.value });
-        if (e.target.id === 'urlInput')       updateChat(id,   { url:   e.target.value });
+        if (e.target.id === 'urlInput') updateChat(id, { url: e.target.value });
     });
 
     // ── SYNC CONTENT button ───────────────────────────────────
     document.getElementById('contentView').addEventListener('click', (e) => {
         if (e.target.id !== 'btnFetchContent') return;
 
-        const id   = getCurrentId();
+        const id = getCurrentId();
         const chat = getAppData().chats.find(c => c.id === id);
         if (!chat) { console.warn("[REXOW events] SYNC: no active chat"); return; }
 
@@ -136,11 +136,11 @@ export function initEvents() {
         updateChat(id, { url });
         const btn = e.target;
         btn.innerText = "Syncing...";
-        btn.disabled  = true;
+        btn.disabled = true;
 
         chrome.runtime.sendMessage({ type: "TRIGGER_EXTRACT", url }, (res) => {
             const runtimeErr = chrome.runtime.lastError;
-            btn.disabled  = false;
+            btn.disabled = false;
             btn.innerText = "SYNC CONTENT";
             const contentArea = document.getElementById('chatContentArea');
             if (!contentArea) return;
@@ -149,10 +149,8 @@ export function initEvents() {
             if (res.status === "success") {
                 const { title, content, platform, messages = [] } = res.data ?? {};
                 if (!content && !messages.length) { showSyncError("No content found.", "AI site may have updated.", contentArea); return; }
-                updateChat(id, { name: title || chat.name, content: content || "", platform: platform || null, messages });
-                const titleEl = document.getElementById('chatTitleDisplay');
-                if (titleEl) titleEl.textContent = title || chat.name;
-                contentArea.innerHTML = buildMessagesHtml(messages);
+                updateChat(id, { content: content || "", platform: platform || null, messages });
+                contentArea.innerHTML = buildMessagesHtml(messages, content);
                 renderTree();
             } else {
                 showSyncError(res.msg || "Sync failed.", res.detail || "", contentArea);
@@ -168,7 +166,7 @@ export function initEvents() {
 
     // ── Right panel: Generate Summary ────────────────────────
     document.getElementById('btnGenerateSummary')?.addEventListener('click', async () => {
-        const id   = getCurrentId();
+        const id = getCurrentId();
         const chat = getAppData().chats.find(c => c.id === id);
         if (!chat) { alert("No active chat selected."); return; }
         if (!chat.content && !chat.messages?.length) { alert("No content to summarise. Sync first."); return; }
@@ -196,12 +194,16 @@ function showSyncError(msg, detail, container) {
     </div>`;
 }
 
-function buildMessagesHtml(messages) {
-    if (!Array.isArray(messages) || !messages.length)
-        return '<p style="color:var(--text-muted); text-align:center; padding:40px;">No messages found.</p>';
-    return messages.map(m => `
-    <div style="margin-bottom:20px;">
-    <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:0.5px;margin-bottom:6px;">${(m.role||'unknown').toUpperCase()}</div>
-    <div style="font-size:14px;line-height:1.7;white-space:pre-wrap;">${m.text||''}</div>
-    </div>`).join('');
+function buildMessagesHtml(messages, content) {
+    if (Array.isArray(messages) && messages.length) {
+        return messages.map(m => `
+        <div style="margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:0.5px;margin-bottom:6px;">${(m.role || 'unknown').toUpperCase()}</div>
+        <div style="font-size:14px;line-height:1.7;white-space:pre-wrap;">${m.text || ''}</div>
+        </div>`).join('');
+    }
+    if (content && content.trim()) {
+        return `<div style="font-size:14px;line-height:1.7;white-space:pre-wrap;padding:20px;">${content}</div>`;
+    }
+    return '<p style="color:var(--text-muted); text-align:center; padding:40px;">No messages found.</p>';
 }

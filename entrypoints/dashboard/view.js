@@ -8,10 +8,10 @@ import { renderTree } from './tree.js';
 
 export function renderMainView(id, type) {
     const container = document.getElementById('contentView');
-    const welcome   = document.getElementById('welcomeScreen');
-    const appShell  = document.getElementById('appShell');
+    const welcome = document.getElementById('welcomeScreen');
+    const appShell = document.getElementById('appShell');
 
-    welcome.style.display   = 'none';
+    welcome.style.display = 'none';
     container.style.display = 'flex';
 
     if (type === 'folder') {
@@ -30,7 +30,7 @@ export function renderFolderView(folder) {
     const { folders, chats } = getAppData();
 
     const subFolders = folders.filter(f => f.parentId === folder.id);
-    const subChats   = chats.filter(c => c.parentId === folder.id);
+    const subChats = chats.filter(c => c.parentId === folder.id);
 
     let gridHtml = '';
     subFolders.forEach(f => {
@@ -86,38 +86,41 @@ export function renderChatView(chat) {
     </div>
 
     <div id="chatContentArea" style="flex:1; overflow-y:auto; padding:20px;">
-    ${renderMessagesHtml(chat.messages)}
+    ${renderMessagesHtml(chat.messages, chat.content)}
     </div>
     </div>`;
 
     // Populate right panel
-    const notesEl   = document.getElementById('chatNotes');
+    const notesEl = document.getElementById('chatNotes');
     const summaryEl = document.getElementById('summaryDisplay');
-    if (notesEl)   notesEl.value       = chat.notes   || '';
-    if (summaryEl) summaryEl.innerHTML = chat.summary  || 'No summary generated.';
+    if (notesEl) notesEl.value = chat.notes || '';
+    if (summaryEl) summaryEl.innerHTML = chat.summary || 'No summary generated.';
 }
 
-function renderMessagesHtml(messages) {
-    if (!messages || messages.length === 0) {
-        return `<div style="text-align:center; padding:40px; color:var(--text-muted);">
-        <p>No content synced yet.</p>
-        <p style="font-size:12px;">Paste a URL above and click SYNC CONTENT.</p>
-        </div>`;
+function renderMessagesHtml(messages, content) {
+    if (messages && messages.length > 0) {
+        return messages.map(m => `
+        <div style="margin-bottom:20px;">
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted);
+        letter-spacing:0.5px; margin-bottom:6px;">${(m.role || 'unknown').toUpperCase()}</div>
+        <div style="font-size:14px; line-height:1.7; white-space:pre-wrap;">${m.text || ''}</div>
+        </div>`
+        ).join('');
     }
-    return messages.map(m => `
-    <div style="margin-bottom:20px;">
-    <div style="font-size:11px; font-weight:700; color:var(--text-muted);
-    letter-spacing:0.5px; margin-bottom:6px;">${(m.role || 'unknown').toUpperCase()}</div>
-    <div style="font-size:14px; line-height:1.7; white-space:pre-wrap;">${m.text || ''}</div>
-    </div>`
-    ).join('');
+    if (content && content.trim()) {
+        return `<div style="font-size:14px; line-height:1.7; white-space:pre-wrap; padding:20px;">${content}</div>`;
+    }
+    return `<div style="text-align:center; padding:40px; color:var(--text-muted);">
+    <p>No content synced yet.</p>
+    <p style="font-size:12px;">Paste a URL above and click SYNC CONTENT.</p>
+    </div>`;
 }
 
 export function showWelcome() {
     setCurrentId(null);
     document.documentElement.style.setProperty('--active-color', '#ec4899');
     document.getElementById('welcomeScreen').style.display = 'flex';
-    document.getElementById('contentView').style.display   = 'none';
+    document.getElementById('contentView').style.display = 'none';
     document.getElementById('appShell').classList.remove('right-open');
 }
 
