@@ -80,23 +80,7 @@ chrome.runtime.onConnect.addListener((port) => {
     });
 });
 
-// ── Activate a tab (bring to foreground so page is un-throttled) ──
-function activateTab(tabId, callback) {
-    chrome.tabs.update(tabId, { active: true }, (tab) => {
-        void chrome.runtime.lastError;
-        if (tab?.windowId) {
-            chrome.windows.update(tab.windowId, { focused: true }, () => {
-                void chrome.runtime.lastError;
-                // Small delay for browser to un-throttle the page
-                setTimeout(callback, 300);
-            });
-        } else {
-            setTimeout(callback, 300);
-        }
-    });
-}
-
-// ── One-shot messages (SAVE & EXTRACT) ──────────────────────
+// ── One-shot messages (SAVE & EXTRACT & SEND) ───────────────
 chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     if (!nativePort) connectNative();
 
@@ -124,14 +108,11 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
                 sendResponse({ status: "error", msg: "No matching tab found", detail: `Open "${req.url}" in a tab first.` });
                 return;
             }
-            // Activate tab to force Gemini to render latest DOM
-            activateTab(target.id, () => {
-                chrome.tabs.sendMessage(target.id, { type: "EXTRACT_CONTENT" }, (res) => {
-                    const err = chrome.runtime.lastError;
-                    if (err) { sendResponse({ status: "error", msg: err.message, detail: "Try refreshing the AI tab." }); return; }
-                    if (!res) { sendResponse({ status: "error", msg: "No response from content script." }); return; }
-                    sendResponse(res);
-                });
+            chrome.tabs.sendMessage(target.id, { type: "EXTRACT_CONTENT" }, (res) => {
+                const err = chrome.runtime.lastError;
+                if (err) { sendResponse({ status: "error", msg: err.message, detail: "Try refreshing the AI tab." }); return; }
+                if (!res) { sendResponse({ status: "error", msg: "No response from content script." }); return; }
+                sendResponse(res);
             });
         });
         return true;
@@ -152,14 +133,11 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
                 sendResponse({ status: "error", msg: "No matching tab found", detail: `Open "${req.url}" in a tab first.` });
                 return;
             }
-            // Activate tab so Gemini processes the send properly
-            activateTab(target.id, () => {
-                chrome.tabs.sendMessage(target.id, { type: "SEND_MESSAGE", text: req.text }, (res) => {
-                    const err = chrome.runtime.lastError;
-                    if (err) { sendResponse({ status: "error", msg: err.message, detail: "Try refreshing the AI tab." }); return; }
-                    if (!res) { sendResponse({ status: "error", msg: "No response from content script." }); return; }
-                    sendResponse(res);
-                });
+            chrome.tabs.sendMessage(target.id, { type: "SEND_MESSAGE", text: req.text }, (res) => {
+                const err = chrome.runtime.lastError;
+                if (err) { sendResponse({ status: "error", msg: err.message, detail: "Try refreshing the AI tab." }); return; }
+                if (!res) { sendResponse({ status: "error", msg: "No response from content script." }); return; }
+                sendResponse(res);
             });
         });
         return true;
