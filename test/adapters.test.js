@@ -79,16 +79,16 @@ test('extracts structured messages with roles from custom elements', () => {
 });
 
 test('filters noise lines from Gemini output when structured elements are missing', () => {
-    // jsdom doesn't support custom elements nicely if not configured, but our fallback handles plain divs
+    // No <user-query> or <model-response> — adapter falls back to container text filtering
     setDOM(`
         <div id="infinite-scroller">
-        Line 1
+        Line 1 of the conversation that is long enough to pass the length check
         Show drafts
-        Actual content
+        Actual content that represents a real conversation message from the model
         Regenerate
-        More content
+        More content that is meaningful and represents actual conversation text here
         </div>`);
-    // Patch querySelector for test
+    // Patch querySelector for test — map 'infinite-scroller' tag to the div by id
     const orig = document.querySelector.bind(document);
     jest.spyOn(document, 'querySelector').mockImplementation((sel) => {
         if (sel === 'infinite-scroller') return document.getElementById('infinite-scroller');

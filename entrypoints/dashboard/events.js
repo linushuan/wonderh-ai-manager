@@ -165,7 +165,7 @@ export function initEvents() {
         if (!url) { alert('Please enter a URL first.'); return; }
         try {
             new URL(url);
-            window.open(url, '_blank');
+            chrome.tabs.create({ url });
         } catch (_) {
             alert('Invalid URL format.');
         }

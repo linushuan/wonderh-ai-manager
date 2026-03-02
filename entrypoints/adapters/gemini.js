@@ -2,18 +2,18 @@
  * adapters/gemini.js — Google Gemini Content Adapter
  *
  * DOM Strategy (2024+):
- *   Primary: Look for <user-query> and <model-response> custom elements
- *   inside 'infinite-scroller' or '.conversation-container' or main content area.
- *   For text extraction, use .model-response-text / .query-text children
- *   to avoid capturing toolbar buttons/actions text.
- *   Fallback: filter raw innerText of the conversation container.
+ *   1. Search the ENTIRE document for <user-query> and <model-response> custom elements
+ *      (these are the structured conversation turns in Gemini's Web Component architecture).
+ *   2. For text, prefer inner content children (.model-response-text, .markdown-main-panel)
+ *      to avoid capturing toolbar/action button text.
+ *   3. Fallback: filter raw innerText of a conversation container.
  */
 
 const NOISE_LINES = new Set([
     'Show drafts', 'Regenerate', 'Modify response', 'Listen',
     'Share', 'More', 'thumb_up', 'thumb_down', 'content_copy',
     'Google', 'Report a legal issue', 'volume_up', 'Edit in Docs',
-    'flag', 'Share & export', 'Edit query',
+    'flag', 'Share & export', 'Edit query', 'close',
 ]);
 
 export default class GeminiAdapter {
@@ -28,32 +28,19 @@ export default class GeminiAdapter {
             document.querySelector('[data-conversation-title]');
         if (titleEl?.innerText?.trim()) title = titleEl.innerText.trim();
 
-        // Find conversation container — try multiple selectors
-        const container =
-            document.querySelector('infinite-scroller') ||
-            document.querySelector('.conversation-container') ||
-            document.querySelector('[role="main"] .conversation-container') ||
-            document.querySelector('[role="main"]');
-
-        if (!container) {
-            const bodyText = document.body?.innerText?.trim() || '';
-            if (bodyText.length < 100) {
-                throw new Error("Gemini: page content too short. The page may still be loading.");
-            }
-            return { title, content: bodyText, platform: "gemini", messages: [] };
-        }
-
-        // Try to extract structured messages
-        const messageNodes = container.querySelectorAll('user-query, model-response');
-        let messages = [];
-        let fullContent = [];
+        // ── Step 1: Search the ENTIRE document for structured message elements ──
+        // Do NOT restrict to a specific container — Gemini's DOM nesting varies.
+        const messageNodes = document.querySelectorAll('user-query, model-response');
 
         if (messageNodes.length > 0) {
+            const messages = [];
+            const fullContent = [];
+
             for (const node of messageNodes) {
                 const tagName = node.tagName.toLowerCase();
                 const role = tagName === 'user-query' ? 'user' : 'assistant';
 
-                // Try to get text from inner content elements first, avoiding toolbar text
+                // Prefer inner content elements to skip toolbar/action buttons
                 const innerContent =
                     node.querySelector('.model-response-text') ||
                     node.querySelector('.markdown-main-panel') ||
@@ -61,20 +48,20 @@ export default class GeminiAdapter {
                     node.querySelector('.query-content') ||
                     node;
 
-                const text = innerContent?.innerText?.trim() || '';
+                const rawText = innerContent?.innerText?.trim() || '';
+                if (!rawText) continue;
 
-                if (text) {
-                    // Filter out noise lines that may have leaked in
-                    const cleanedLines = text.split('\n')
-                        .map(l => l.trim())
-                        .filter(l => l.length > 0)
-                        .filter(l => !NOISE_LINES.has(l));
-                    const cleanedText = cleanedLines.join('\n');
+                // Filter out noise lines that leaked into the text
+                const cleanedText = rawText
+                    .split('\n')
+                    .map(l => l.trim())
+                    .filter(l => l.length > 0)
+                    .filter(l => !NOISE_LINES.has(l))
+                    .join('\n');
 
-                    if (cleanedText) {
-                        messages.push({ role, text: cleanedText });
-                        fullContent.push(cleanedText);
-                    }
+                if (cleanedText) {
+                    messages.push({ role, text: cleanedText });
+                    fullContent.push(cleanedText);
                 }
             }
 
@@ -88,24 +75,41 @@ export default class GeminiAdapter {
             }
         }
 
-        // Fallback: raw text filtering
-        const rawText = container.innerText || '';
-        const cleanText = rawText
-            .split('\n')
-            .map(l => l.trim())
-            .filter(l => l.length > 0)
-            .filter(l => !NOISE_LINES.has(l))
-            .join('\n');
+        // ── Step 2: Fallback — find a conversation container and filter raw text ──
+        const container =
+            document.querySelector('infinite-scroller') ||
+            document.querySelector('.conversation-container') ||
+            document.querySelector('[role="main"] .conversation-container');
 
-        if (!cleanText) {
-            throw new Error("Gemini: conversation appears empty after filtering.");
+        if (container) {
+            const rawText = container.innerText || '';
+            const cleanText = rawText
+                .split('\n')
+                .map(l => l.trim())
+                .filter(l => l.length > 0)
+                .filter(l => !NOISE_LINES.has(l))
+                .join('\n');
+
+            if (cleanText && cleanText.length > 50) {
+                return {
+                    title,
+                    content: cleanText,
+                    platform: "gemini",
+                    messages: []
+                };
+            }
         }
 
-        return {
-            title,
-            content: cleanText,
-            platform: "gemini",
-            messages: []
-        };
+        // ── Step 3: Last resort — body text but exclude sidebar ──
+        // Try to get just the main content area, not the sidebar
+        const main = document.querySelector('[role="main"]');
+        const textSource = main || document.body;
+        const bodyText = textSource?.innerText?.trim() || '';
+
+        if (bodyText.length < 100) {
+            throw new Error("Gemini: page content too short. The page may still be loading.");
+        }
+
+        return { title, content: bodyText, platform: "gemini", messages: [] };
     }
 }
