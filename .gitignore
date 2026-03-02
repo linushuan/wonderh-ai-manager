@@ -8,3 +8,4 @@ struct.md
 __pycache__/
 *.log
 node_modules
+coverage/
