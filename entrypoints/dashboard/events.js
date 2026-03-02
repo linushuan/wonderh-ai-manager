@@ -195,6 +195,97 @@ export function initEvents() {
             updateSummaryDisplay(`<span style="color:#f87171">⚠ ${err.message}</span>`);
         }
     });
+
+    // ── Send message button ──────────────────────────────────
+    document.getElementById('contentView').addEventListener('click', (e) => {
+        if (e.target.closest('#btnSendMessage')) {
+            handleSendMessage();
+        }
+    });
+
+    // ── Send message via Enter key ───────────────────────────
+    document.getElementById('contentView').addEventListener('keydown', (e) => {
+        if (e.target.id === 'sendMessageInput' && e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSendMessage();
+        }
+    });
+}
+
+function handleSendMessage() {
+    const id = getCurrentId();
+    const chat = getAppData().chats.find(c => c.id === id);
+    if (!chat) { console.warn("[REXOW events] SEND: no active chat"); return; }
+
+    const url = chat.url || document.getElementById('urlInput')?.value?.trim();
+    if (!url) { showSyncError("Please set a URL first.", ""); return; }
+
+    const input = document.getElementById('sendMessageInput');
+    const text = input?.value?.trim();
+    if (!text) return;
+
+    // Clear input immediately
+    input.value = '';
+
+    // Optimistically add user message bubble
+    const contentArea = document.getElementById('chatContentArea');
+    if (contentArea) {
+        const bubble = document.createElement('div');
+        bubble.className = 'msg-bubble msg-user';
+        bubble.innerHTML = `
+            <div class="msg-role">USER</div>
+            <div class="msg-text">${text}</div>`;
+        contentArea.appendChild(bubble);
+        contentArea.scrollTop = contentArea.scrollHeight;
+    }
+
+    // Send to AI via background → content script
+    const sendBtn = document.getElementById('btnSendMessage');
+    if (sendBtn) sendBtn.disabled = true;
+
+    chrome.runtime.sendMessage({ type: "SEND_MESSAGE", url, text }, (res) => {
+        void chrome.runtime.lastError;
+        if (sendBtn) sendBtn.disabled = false;
+
+        if (!res || res.status !== "success") {
+            const msg = res?.msg || "Failed to send message.";
+            showSyncError(msg, res?.detail || "", contentArea);
+            return;
+        }
+
+        // Auto-resync after a delay to get the AI's response
+        setTimeout(() => {
+            triggerResync(id, url);
+        }, 4000);
+    });
+}
+
+function triggerResync(chatId, url) {
+    const btn = document.getElementById('btnFetchContent');
+    if (btn) {
+        btn.innerText = "Syncing...";
+        btn.disabled = true;
+    }
+
+    chrome.runtime.sendMessage({ type: "TRIGGER_EXTRACT", url }, (res) => {
+        void chrome.runtime.lastError;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = "SYNC CONTENT";
+        }
+        const contentArea = document.getElementById('chatContentArea');
+        if (!res || res.status !== "success") return;
+
+        const { title, content, platform, messages = [] } = res.data ?? {};
+        if (!content && !messages.length) return;
+
+        updateChat(chatId, { content: content || "", platform: platform || null, messages });
+        if (contentArea) {
+            contentArea.innerHTML = buildMessagesHtml(messages, content);
+            contentArea.scrollTop = contentArea.scrollHeight;
+        }
+        renderTree();
+    });
 }
 
 function showSyncError(msg, detail, container) {

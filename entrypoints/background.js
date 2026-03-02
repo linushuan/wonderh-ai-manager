@@ -116,6 +116,31 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
             });
         });
         return true;
+
+    } else if (req.type === "SEND_MESSAGE") {
+        if (!req.url || typeof req.url !== 'string') {
+            sendResponse({ status: "error", msg: "Invalid URL provided." });
+            return true;
+        }
+        if (!req.text || typeof req.text !== 'string') {
+            sendResponse({ status: "error", msg: "No message text provided." });
+            return true;
+        }
+        chrome.tabs.query({}, (tabs) => {
+            void chrome.runtime.lastError;
+            const target = tabs.find(t => t.url && t.url.startsWith(req.url));
+            if (!target) {
+                sendResponse({ status: "error", msg: "No matching tab found", detail: `Open "${req.url}" in a tab first.` });
+                return;
+            }
+            chrome.tabs.sendMessage(target.id, { type: "SEND_MESSAGE", text: req.text }, (res) => {
+                const err = chrome.runtime.lastError;
+                if (err) { sendResponse({ status: "error", msg: err.message, detail: "Try refreshing the AI tab." }); return; }
+                if (!res) { sendResponse({ status: "error", msg: "No response from content script." }); return; }
+                sendResponse(res);
+            });
+        });
+        return true;
     }
 });
 

@@ -5,39 +5,60 @@
 console.log("[REXOW] Content Extractor Loaded");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.type !== "EXTRACT_CONTENT") return;
+    if (request.type === "EXTRACT_CONTENT") {
+        (async () => {
+            try {
+                const data = await runAdapter();
+                sendResponse({ status: "success", data });
+            } catch (e) {
+                console.error("[REXOW] Extraction error:", e);
+                sendResponse({
+                    status: "error",
+                    msg: e.message || "Unknown extraction error.",
+                    detail: "The AI site layout may have changed. Please wait for a REXOW update."
+                });
+            }
+        })();
+        return true;
+    }
 
-    (async () => {
-        try {
-            const data = await runAdapter();
-            sendResponse({ status: "success", data });
-        } catch (e) {
-            console.error("[REXOW] Extraction error:", e);
-            sendResponse({
-                status: "error",
-                msg: e.message || "Unknown extraction error.",
-                detail: "The AI site layout may have changed. Please wait for a REXOW update."
-            });
-        }
-    })();
-
-    return true; // keep channel open for async sendResponse
+    if (request.type === "SEND_MESSAGE") {
+        (async () => {
+            try {
+                const adapter = await getAdapter();
+                if (typeof adapter.sendMessage !== 'function') {
+                    sendResponse({ status: "error", msg: "This adapter does not support sending messages." });
+                    return;
+                }
+                adapter.sendMessage(request.text);
+                sendResponse({ status: "success" });
+            } catch (e) {
+                console.error("[REXOW] Send message error:", e);
+                sendResponse({
+                    status: "error",
+                    msg: e.message || "Failed to send message.",
+                    detail: "The AI site input may have changed."
+                });
+            }
+        })();
+        return true;
+    }
 });
 
-async function runAdapter() {
+async function getAdapter() {
     const url = window.location.href;
 
-    // 1. Route to correct adapter
+    // Route to correct adapter
     let modulePath;
-    if (url.includes("chatgpt.com"))        modulePath = "entrypoints/adapters/chatgpt.js";
+    if (url.includes("chatgpt.com")) modulePath = "entrypoints/adapters/chatgpt.js";
     else if (url.includes("gemini.google.com")) modulePath = "entrypoints/adapters/gemini.js";
-    else if (url.includes("claude.ai"))     modulePath = "entrypoints/adapters/claude.js";
+    else if (url.includes("claude.ai")) modulePath = "entrypoints/adapters/claude.js";
     else throw new Error("Unsupported platform. REXOW works on ChatGPT, Gemini, and Claude.");
 
-    // 2. Dynamically import adapter (must use chrome.runtime.getURL for web_accessible_resources)
+    // Dynamically import adapter (must use chrome.runtime.getURL for web_accessible_resources)
     let AdapterClass;
     try {
-        const src    = chrome.runtime.getURL(modulePath);
+        const src = chrome.runtime.getURL(modulePath);
         const module = await import(src);
         AdapterClass = module.default;
     } catch (err) {
@@ -48,9 +69,13 @@ async function runAdapter() {
         throw new Error(`Adapter at ${modulePath} did not export a class.`);
     }
 
-    // 3. Run adapter
     const adapter = new AdapterClass();
-    console.log(`[REXOW] Running ${adapter.name} Adapter...`);
+    console.log(`[REXOW] Using ${adapter.name} Adapter`);
+    return adapter;
+}
+
+async function runAdapter() {
+    const adapter = await getAdapter();
 
     let result;
     try {
@@ -59,7 +84,7 @@ async function runAdapter() {
         throw new Error(`${adapter.name} adapter crashed: ${err.message}`);
     }
 
-    // 4. Validate result shape
+    // Validate result shape
     if (!result || typeof result !== 'object') {
         throw new Error(`${adapter.name} adapter returned invalid result.`);
     }
@@ -67,7 +92,7 @@ async function runAdapter() {
         throw new Error(`${adapter.name} adapter found no content. The page layout may have changed.`);
     }
 
-    // 5. Normalise — ensure messages array always exists
+    // Normalise — ensure messages array always exists
     if (!Array.isArray(result.messages)) {
         result.messages = [];
     }

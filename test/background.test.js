@@ -127,3 +127,42 @@ test('TRIGGER_EXTRACT matches tab with URL prefix', () => {
 
     expect(mockTabsSendMessage).toHaveBeenCalledWith(7, expect.anything(), expect.any(Function));
 });
+
+// ── SEND_MESSAGE ─────────────────────────────────────────────
+
+test('SEND_MESSAGE finds matching tab and forwards message to content script', () => {
+    const targetTab = { id: 10, url: "https://gemini.google.com/app/abc123" };
+    mockTabsQuery.mockImplementation((_, cb) => cb([targetTab]));
+    mockTabsSendMessage.mockImplementation((tabId, msg, cb) =>
+        cb({ status: "success" })
+    );
+
+    const sendResponse = jest.fn();
+    global.chrome.runtime.onMessage._fire(
+        { type: "SEND_MESSAGE", url: "https://gemini.google.com/app/abc123", text: "Hello AI" },
+        {},
+        sendResponse
+    );
+
+    expect(mockTabsSendMessage).toHaveBeenCalledWith(
+        10,
+        { type: "SEND_MESSAGE", text: "Hello AI" },
+        expect.any(Function)
+    );
+    expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "success" })
+    );
+});
+
+test('SEND_MESSAGE returns error when text is missing', () => {
+    const sendResponse = jest.fn();
+    global.chrome.runtime.onMessage._fire(
+        { type: "SEND_MESSAGE", url: "https://gemini.google.com/app/abc123" },
+        {},
+        sendResponse
+    );
+
+    expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "error", msg: "No message text provided." })
+    );
+});

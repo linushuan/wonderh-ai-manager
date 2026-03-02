@@ -19,6 +19,13 @@ const NOISE_LINES = new Set([
 export default class GeminiAdapter {
     constructor() { this.name = "Gemini"; }
 
+    /**
+     * Strip known prefixes from user query text (e.g. "你說了" added by Gemini UI).
+     */
+    _cleanUserText(text) {
+        return text.replace(/^你說了\s*/, '');
+    }
+
     extract() {
         // Title
         let title = document.title || "Untitled";
@@ -52,12 +59,17 @@ export default class GeminiAdapter {
                 if (!rawText) continue;
 
                 // Filter out noise lines that leaked into the text
-                const cleanedText = rawText
+                let cleanedText = rawText
                     .split('\n')
                     .map(l => l.trim())
                     .filter(l => l.length > 0)
                     .filter(l => !NOISE_LINES.has(l))
                     .join('\n');
+
+                // Strip "你說了" prefix from user messages
+                if (role === 'user') {
+                    cleanedText = this._cleanUserText(cleanedText);
+                }
 
                 if (cleanedText) {
                     messages.push({ role, text: cleanedText });
@@ -111,5 +123,46 @@ export default class GeminiAdapter {
         }
 
         return { title, content: bodyText, platform: "gemini", messages: [] };
+    }
+
+    /**
+     * Send a message to Gemini by injecting text into the input field and clicking send.
+     * @param {string} text - The message to send
+     */
+    sendMessage(text) {
+        if (!text?.trim()) throw new Error("Cannot send empty message.");
+
+        // Gemini uses a rich-text editor — try multiple selectors
+        const inputEl =
+            document.querySelector('rich-textarea .ql-editor') ||
+            document.querySelector('.ql-editor[contenteditable="true"]') ||
+            document.querySelector('[contenteditable="true"][aria-label]') ||
+            document.querySelector('textarea[aria-label]');
+
+        if (!inputEl) throw new Error("Gemini: could not find input field. The page may have changed.");
+
+        // Set text content
+        if (inputEl.tagName === 'TEXTAREA') {
+            inputEl.value = text;
+            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        } else {
+            // contenteditable div
+            inputEl.innerHTML = `<p>${text}</p>`;
+            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Find and click the send button
+        const sendBtn =
+            document.querySelector('.send-button') ||
+            document.querySelector('button[aria-label="Send message"]') ||
+            document.querySelector('button.send-button') ||
+            document.querySelector('[data-test-id="send-button"]');
+
+        if (!sendBtn) throw new Error("Gemini: could not find send button.");
+
+        // Small delay to let Gemini's UI register the input
+        setTimeout(() => {
+            sendBtn.click();
+        }, 100);
     }
 }

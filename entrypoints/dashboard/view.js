@@ -85,7 +85,20 @@ export function renderChatView(chat) {
     <div id="chatContentArea">
     ${renderMessagesHtml(chat.messages, chat.content)}
     </div>
+
+    <div class="chat-send-bar">
+    <input id="sendMessageInput" type="text" placeholder="Type a message to send to AI..." autocomplete="off" />
+    <button id="btnSendMessage" class="btn-send" title="Send message">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+    </button>
+    </div>
     </div>`;
+
+    // Scroll to bottom so newest messages are visible
+    requestAnimationFrame(() => {
+        const chatArea = document.getElementById('chatContentArea');
+        if (chatArea) chatArea.scrollTop = chatArea.scrollHeight;
+    });
 
     // Populate right panel
     const notesEl = document.getElementById('chatNotes');

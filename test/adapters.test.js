@@ -102,6 +102,31 @@ test('filters noise lines from Gemini output when structured elements are missin
     jest.restoreAllMocks();
 });
 
+test('strips "你說了" prefix from user query text', () => {
+    setDOM(`
+        <div id="infinite-scroller">
+            <user-query>你說了 What is the capital of France?</user-query>
+            <model-response>The capital of France is Paris.</model-response>
+        </div>`);
+
+    const orig = document.querySelector.bind(document);
+    jest.spyOn(document, 'querySelector').mockImplementation((sel) => {
+        if (sel === 'infinite-scroller') return document.getElementById('infinite-scroller');
+        return orig(sel);
+    });
+
+    const result = new GeminiAdapter().extract();
+    expect(result.messages[0].text).toBe("What is the capital of France?");
+    expect(result.messages[0].text).not.toContain("你說了");
+
+    jest.restoreAllMocks();
+});
+
+test('GeminiAdapter has sendMessage method', () => {
+    const adapter = new GeminiAdapter();
+    expect(typeof adapter.sendMessage).toBe('function');
+});
+
 test('throws when page content is too short', () => {
     setDOM(`<p>Hi</p>`);
     jest.spyOn(document, 'querySelector').mockReturnValue(null);
