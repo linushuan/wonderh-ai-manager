@@ -1,6 +1,7 @@
 # Local Data
 *.json_bak
 ~/wonderh_ai_data.json
+struct.md
 
 # Linux/System
 .DS_Store

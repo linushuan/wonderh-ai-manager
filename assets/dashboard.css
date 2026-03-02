@@ -5,9 +5,9 @@
     --border: #27272a;
 
     /* + 按鈕改紫色 */
-    --accent: #38bdf8;
-    --accent-glow: rgba(168, 85, 247, 0.25);
-    --accent-hover: rgba(168, 85, 247, 0.12);
+    --accent: #BE77FF;
+    --accent-glow: rgba(190, 119, 255, 0.25);
+    --accent-hover: rgba(190, 119, 255, 0.12);
 
     --text-main: #e4e4e7;
     --text-muted: #a1a1aa;
@@ -59,7 +59,7 @@ body {
     cursor: pointer; transition: 0.2s;
 }
 .btn-circle-add:hover { background: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
-.btn-circle-add:active { background: #0284c7; } /* sky-600，比 sky-400 深一階 */
+.btn-circle-add:active { background:  #B15BFF; }
 
 .btn-icon-toggle {
     background: transparent; border: none; color: var(--text-muted);

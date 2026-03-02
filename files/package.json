@@ -1,0 +1,32 @@
+{
+  "name": "wonderh-ai-manager",
+  "version": "1.2.0",
+  "description": "REXOW Local-First AI Manager",
+  "scripts": {
+    "test": "jest --coverage",
+    "test:watch": "jest --watch",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "jest-chrome": "^0.8.0",
+    "@jest/globals": "^29.0.0"
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "transform": {},
+    "extensionsToTreatAsEsm": [".js"],
+    "moduleNameMapper": {
+      "^chrome$": "jest-chrome"
+    },
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ],
+    "coverageReporters": ["text", "lcov"],
+    "collectCoverageFrom": [
+      "entrypoints/**/*.js",
+      "!entrypoints/dashboard.html"
+    ]
+  }
+}

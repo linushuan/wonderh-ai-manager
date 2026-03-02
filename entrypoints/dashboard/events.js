@@ -1,0 +1,207 @@
+/**
+ * events.js — Event Delegation & UI Wiring (DEBUG BUILD)
+ */
+import {
+    getAppData, setAppData, getCurrentId, getExpandedFolders,
+    addFolder, addChat, updateFolder, updateChat,
+    deleteFolder, deleteChat
+} from './store.js';
+import { selectItem, showWelcome, updateSummaryDisplay, renderMainView } from './view.js';
+import { renderTree } from './tree.js';
+import { generateSummary, getApiKey } from './api.js';
+
+export function initEvents() {
+
+    // ── Brand click → welcome ─────────────────────────────────
+    // 注意：DATA_LOADED 現在透過 store.js 的 long-lived port 處理，
+    // 不在這裡監聽（Firefox extension page 收不到 runtime.sendMessage 廣播）
+    document.getElementById('brandHome').onclick = showWelcome;
+
+    // ── Add root folder ───────────────────────────────────────
+    document.getElementById('addRootFolder').onclick = () => {
+        const name = prompt("New Project Name:")?.trim();
+        if (!name) return;
+        try {
+            addFolder(name, null);
+            renderTree();
+        } catch (e) {
+            alert("Could not create folder: " + e.message);
+        }
+    };
+
+    // ── Sidebar tree clicks ───────────────────────────────────
+    document.getElementById('folderTree').onclick = (e) => {
+        const chevron = e.target.closest('.btn-chevron');
+        const btn     = e.target.closest('.action-btn');
+        const node    = e.target.closest('.node-content');
+
+        if (chevron && !chevron.classList.contains('invisible')) {
+            e.stopPropagation();
+            const id       = chevron.dataset.id;
+            const expanded = getExpandedFolders();
+            expanded.has(id) ? expanded.delete(id) : expanded.add(id);
+            renderTree();
+            return;
+        }
+
+        if (btn) {
+            e.stopPropagation();
+            const id   = btn.dataset.id;
+            const type = btn.dataset.type || node?.dataset.type;
+
+            if (btn.classList.contains('btn-add')) {
+                const name = prompt("New Folder Name:")?.trim();
+                if (!name) return;
+                try { addFolder(name, id); renderTree(); }
+                catch (e) { alert("Could not create folder: " + e.message); }
+
+            } else if (btn.classList.contains('btn-new-chat')) {
+                const name = prompt("New Chat Name:")?.trim();
+                if (!name) return;
+                try { addChat(name, id); renderTree(); }
+                catch (e) { alert("Could not create chat: " + e.message); }
+
+            } else if (btn.classList.contains('btn-edit')) {
+                const item = type === 'folder'
+                ? getAppData().folders.find(x => x.id === id)
+                : getAppData().chats.find(x => x.id === id);
+                if (!item) return;
+                const newName = prompt("Rename to:", item.name)?.trim();
+                if (!newName) return;
+                try {
+                    type === 'folder'
+                    ? updateFolder(id, { name: newName })
+                    : updateChat(id, { name: newName });
+                    renderTree();
+                    if (getCurrentId() === id) renderMainView(id, type);
+                } catch (e) { alert("Could not rename: " + e.message); }
+
+            } else if (btn.classList.contains('btn-delete')) {
+                if (!confirm("Delete permanently?")) return;
+                try {
+                    type === 'folder' ? deleteFolder(id) : deleteChat(id);
+                    showWelcome();
+                    renderTree();
+                } catch (e) { alert("Could not delete: " + e.message); }
+            }
+            return;
+        }
+
+        if (node) {
+            try { selectItem(node.dataset.id, node.dataset.type); }
+            catch (e) { console.error("[REXOW events] selectItem failed:", e); }
+        }
+    };
+
+    // ── Content view grid clicks ──────────────────────────────
+    document.getElementById('contentView').onclick = (e) => {
+        const gridItem = e.target.closest('.grid-item');
+        if (!gridItem) return;
+        try { selectItem(gridItem.dataset.id, gridItem.dataset.type); }
+        catch (e) { console.error("[REXOW events] grid selectItem failed:", e); }
+    };
+
+    // ── Right panel toggle ────────────────────────────────────
+    document.getElementById('contentView').addEventListener('click', (e) => {
+        const btn = e.target.closest('#toggleRightPanel');
+        if (!btn) return;
+        const appShell = document.getElementById('appShell');
+        const isNowOpen = appShell.classList.toggle('right-open');
+        btn.classList.toggle('closed', !isNowOpen);
+    });
+
+    // ── Chat view inputs (delegated) ──────────────────────────
+    document.getElementById('contentView').addEventListener('input', (e) => {
+        const id = getCurrentId();
+        if (!id) return;
+        if (e.target.id === 'mainNoteEditor') updateFolder(id, { notes: e.target.value });
+        if (e.target.id === 'urlInput')       updateChat(id,   { url:   e.target.value });
+    });
+
+    // ── SYNC CONTENT button ───────────────────────────────────
+    document.getElementById('contentView').addEventListener('click', (e) => {
+        if (e.target.id !== 'btnFetchContent') return;
+
+        const id   = getCurrentId();
+        const chat = getAppData().chats.find(c => c.id === id);
+        if (!chat) { console.warn("[REXOW events] SYNC: no active chat"); return; }
+
+        const url = document.getElementById('urlInput')?.value?.trim();
+        if (!url) { showSyncError("Please enter a URL first.", ""); return; }
+        try { new URL(url); } catch (_) {
+            showSyncError("Invalid URL format.", "Make sure the URL starts with https://");
+            return;
+        }
+
+        updateChat(id, { url });
+        const btn = e.target;
+        btn.innerText = "Syncing...";
+        btn.disabled  = true;
+
+        chrome.runtime.sendMessage({ type: "TRIGGER_EXTRACT", url }, (res) => {
+            const runtimeErr = chrome.runtime.lastError;
+            btn.disabled  = false;
+            btn.innerText = "SYNC CONTENT";
+            const contentArea = document.getElementById('chatContentArea');
+            if (!contentArea) return;
+            if (runtimeErr) { showSyncError("Extension error: " + runtimeErr.message, "Try reloading the extension.", contentArea); return; }
+            if (!res) { showSyncError("No response received.", "Try again.", contentArea); return; }
+            if (res.status === "success") {
+                const { title, content, platform, messages = [] } = res.data ?? {};
+                if (!content && !messages.length) { showSyncError("No content found.", "AI site may have updated.", contentArea); return; }
+                updateChat(id, { name: title || chat.name, content: content || "", platform: platform || null, messages });
+                const titleEl = document.getElementById('chatTitleDisplay');
+                if (titleEl) titleEl.textContent = title || chat.name;
+                contentArea.innerHTML = buildMessagesHtml(messages);
+                renderTree();
+            } else {
+                showSyncError(res.msg || "Sync failed.", res.detail || "", contentArea);
+            }
+        });
+    });
+
+    // ── Right panel: notes ────────────────────────────────────
+    document.getElementById('chatNotes')?.addEventListener('input', (e) => {
+        const id = getCurrentId();
+        if (id) updateChat(id, { notes: e.target.value });
+    });
+
+    // ── Right panel: Generate Summary ────────────────────────
+    document.getElementById('btnGenerateSummary')?.addEventListener('click', async () => {
+        const id   = getCurrentId();
+        const chat = getAppData().chats.find(c => c.id === id);
+        if (!chat) { alert("No active chat selected."); return; }
+        if (!chat.content && !chat.messages?.length) { alert("No content to summarise. Sync first."); return; }
+        const apiKey = await getApiKey();
+        if (!apiKey) { alert("No API key set."); return; }
+        updateSummaryDisplay('<em style="color:var(--text-muted)">Generating...</em>');
+        try {
+            const text = chat.content || chat.messages.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n\n');
+            const summary = await generateSummary(text, apiKey);
+            updateSummaryDisplay(`<p style="white-space:pre-wrap">${summary}</p>`);
+            updateChat(id, { summary });
+        } catch (err) {
+            updateSummaryDisplay(`<span style="color:#f87171">⚠ ${err.message}</span>`);
+        }
+    });
+}
+
+function showSyncError(msg, detail, container) {
+    const target = container || document.getElementById('chatContentArea');
+    if (!target) { alert(msg); return; }
+    target.innerHTML = `
+    <div style="color:#f87171; padding:16px; border:1px dashed #f87171; border-radius:8px; margin:20px;">
+    <strong>⚠ Sync Failed</strong><br><small>${msg}</small>
+    ${detail ? `<br><br><span style="color:#fff; font-size:12px;">Tip: ${detail}</span>` : ''}
+    </div>`;
+}
+
+function buildMessagesHtml(messages) {
+    if (!Array.isArray(messages) || !messages.length)
+        return '<p style="color:var(--text-muted); text-align:center; padding:40px;">No messages found.</p>';
+    return messages.map(m => `
+    <div style="margin-bottom:20px;">
+    <div style="font-size:11px;font-weight:700;color:var(--text-muted);letter-spacing:0.5px;margin-bottom:6px;">${(m.role||'unknown').toUpperCase()}</div>
+    <div style="font-size:14px;line-height:1.7;white-space:pre-wrap;">${m.text||''}</div>
+    </div>`).join('');
+}
