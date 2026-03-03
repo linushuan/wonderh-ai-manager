@@ -136,7 +136,11 @@ export default class GeminiAdapter {
             }
 
             // ── Table ──
-            if (tag === 'TABLE-BLOCK' || tag === 'TABLE' || el.querySelector?.('table')) {
+            // Only match direct TABLE or TABLE-BLOCK elements.
+            // Do NOT use el.querySelector('table') here — that would match any
+            // container (like a <div>) that has a table deep inside, causing
+            // all other content in that container to be skipped.
+            if (tag === 'TABLE-BLOCK' || tag === 'TABLE') {
                 const table = tag === 'TABLE' ? el : el.querySelector('table');
                 if (table) {
                     const md = this._tableToMarkdown(table);

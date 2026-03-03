@@ -141,6 +141,27 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
             });
         });
         return true;
+
+    } else if (req.type === "SEND_ONLY") {
+        if (!req.url || !req.text) {
+            sendResponse({ status: "error", msg: "Missing url or text." });
+            return true;
+        }
+        chrome.tabs.query({}, (tabs) => {
+            void chrome.runtime.lastError;
+            const target = tabs.find(t => t.url && t.url.startsWith(req.url));
+            if (!target) {
+                sendResponse({ status: "error", msg: "No matching tab found", detail: `Open "${req.url}" in a tab first.` });
+                return;
+            }
+            chrome.tabs.sendMessage(target.id, { type: "SEND_ONLY", text: req.text }, (res) => {
+                const err = chrome.runtime.lastError;
+                if (err) { sendResponse({ status: "error", msg: err.message }); return; }
+                if (!res) { sendResponse({ status: "error", msg: "No response from content script." }); return; }
+                sendResponse(res);
+            });
+        });
+        return true;
     } else if (req.type === "SWITCH_TO_REXOW") {
         const dashUrl = chrome.runtime.getURL("entrypoints/dashboard.html");
         chrome.tabs.query({}, (tabs) => {
@@ -156,6 +177,12 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     } else if (req.type === "SWITCH_TO_AI_TAB") {
         if (!req.url) return true;
         chrome.tabs.query({}, (tabs) => {
+            void chrome.runtime.lastError;
+            const target = tabs.find(t => t.url && t.url.startsWith(req.url));
+            if (target) {
+                chrome.tabs.update(target.id, { active: true });
+                if (target.windowId) chrome.windows.update(target.windowId, { focused: true });
+            }
         });
         sendResponse({ status: "ok" });
         return true;

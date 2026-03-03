@@ -36,7 +36,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
-    if (request.type === "SEND_MESSAGE") {
+    if (request.type === "SEND_MESSAGE" || request.type === "SEND_ONLY") {
         injectRexowButton();
         (async () => {
             try {
@@ -46,10 +46,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     return;
                 }
 
-                // 1. Send the message
+                // Send the message
                 adapter.sendMessage(request.text);
 
-                // 2. Wait for AI to finish responding (uses MutationObserver)
+                // SEND_ONLY: return immediately after sending (dashboard will poll)
+                if (request.type === "SEND_ONLY") {
+                    sendResponse({ status: "success", sent: true });
+                    return;
+                }
+
+                // SEND_MESSAGE (legacy): wait for response and extract
                 if (typeof adapter.waitForResponse === 'function') {
                     console.log('[REXOW] Waiting for AI response...');
                     await adapter.waitForResponse();
@@ -58,13 +64,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     await new Promise(r => setTimeout(r, 5000));
                 }
 
-                // 3. Scroll to bottom and extract
                 if (typeof adapter.prepareForExtract === 'function') {
                     adapter.prepareForExtract();
                     await new Promise(r => setTimeout(r, 500));
                 }
 
-                // 4. Extract updated content
                 let result;
                 try {
                     result = adapter.extract();

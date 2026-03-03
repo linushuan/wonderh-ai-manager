@@ -234,7 +234,7 @@ function handleSendMessage() {
         bubble.className = 'msg-bubble msg-user';
         bubble.innerHTML = `
             <div class="msg-role">USER</div>
-            <div class="msg-text">${text}</div>`;
+            <div class="msg-text"><div style="white-space: pre-wrap;">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div></div>`;
         contentArea.appendChild(bubble);
         contentArea.scrollTop = contentArea.scrollHeight;
     }
@@ -243,74 +243,137 @@ function handleSendMessage() {
     const sendBtn = document.getElementById('btnSendMessage');
     const syncBtn = document.getElementById('btnFetchContent');
     if (sendBtn) sendBtn.disabled = true;
-    if (syncBtn) { syncBtn.innerText = "Waiting for AI..."; syncBtn.disabled = true; }
+    if (syncBtn) { syncBtn.innerText = "Sending..."; syncBtn.disabled = true; }
 
-    // Set a 60-second timeout warning
-    const timeoutWarning = setTimeout(() => {
-        if (contentArea && syncBtn && syncBtn.disabled) {
-            const warningBubble = document.createElement('div');
-            warningBubble.className = 'msg-bubble';
-            warningBubble.style.background = 'linear-gradient(145deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.05) 100%)';
-            warningBubble.style.borderLeft = '3px solid rgb(245, 158, 11)';
-            warningBubble.style.backdropFilter = 'blur(10px)';
-            warningBubble.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)';
-            warningBubble.innerHTML = `
-                <div class="msg-role" style="color: rgb(245, 158, 11); display: flex; align-items: center; gap: 6px;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                    SYSTEM
-                </div>
-                <div class="msg-text" style="color: rgba(255,255,255,0.9);">
-                    <p style="margin-bottom: 12px; font-size: 13px; line-height: 1.5;">The AI is taking longer than usual to respond (over 60 seconds). It might be thinking deeply, or waiting for a CAPTCHA.</p>
-                    <button id="btnSwitchToAiTab" style="
-                        background: rgba(245, 158, 11, 0.2); 
-                        color: rgb(253, 230, 138); 
-                        border: 1px solid rgba(245, 158, 11, 0.3); 
-                        padding: 6px 14px; 
-                        border-radius: 6px; 
-                        cursor: pointer;
-                        font-family: inherit;
-                        font-size: 12px;
-                        font-weight: 500;
-                        transition: all 0.2s ease;
-                        display: inline-flex;
-                        align-items: center;
-                        gap: 6px;
-                    " onmouseover="this.style.background='rgba(245, 158, 11, 0.3)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(245, 158, 11, 0.2)'; this.style.color='rgb(253, 230, 138)';">
-                        Switch to AI Tab
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                    </button>
-                </div>`;
-            contentArea.appendChild(warningBubble);
-            contentArea.scrollTop = contentArea.scrollHeight;
-
-            document.getElementById('btnSwitchToAiTab')?.addEventListener('click', () => {
-                chrome.runtime.sendMessage({ type: "SWITCH_TO_AI_TAB", url });
-            });
-        }
-    }, 60000);
-
-    // SEND_MESSAGE waits for AI response + extracts content directly
-    chrome.runtime.sendMessage({ type: "SEND_MESSAGE", url, text }, (res) => {
-        clearTimeout(timeoutWarning);
+    // Step 1: Send the message (returns immediately via SEND_ONLY)
+    chrome.runtime.sendMessage({ type: "SEND_ONLY", url, text }, (sendRes) => {
         void chrome.runtime.lastError;
-        if (sendBtn) sendBtn.disabled = false;
-        if (syncBtn) { syncBtn.innerText = "SYNC CONTENT"; syncBtn.disabled = false; }
-
-        if (!res || res.status !== "success") {
-            const msg = res?.msg || "Failed to send message.";
-            showSyncError(msg, res?.detail || "", contentArea);
+        if (!sendRes || sendRes.status !== "success") {
+            const msg = sendRes?.msg || "Failed to send message.";
+            showSyncError(msg, sendRes?.detail || "", contentArea);
+            if (sendBtn) sendBtn.disabled = false;
+            if (syncBtn) { syncBtn.innerText = "SYNC CONTENT"; syncBtn.disabled = false; }
             return;
         }
 
-        if (res.data) {
-            const { content, platform, messages = [] } = res.data;
-            updateChat(id, { content: content || "", platform: platform || null, messages });
-            if (contentArea) {
-                contentArea.innerHTML = buildMessagesHtml(messages, content);
-                contentArea.scrollTop = contentArea.scrollHeight;
+        // Step 2: Poll at progressive intervals to check for AI response
+        const POLL_DELAYS = [5000, 10000, 15000, 30000, 45000, 60000]; // 5s, 10s, 15s, 30s, 45s, 60s
+        const currentMsgCount = (chat.messages || []).length;
+        let pollIndex = 0;
+        let done = false;
+
+        if (syncBtn) syncBtn.innerText = "Waiting for AI...";
+
+        function pollForResponse() {
+            if (done || pollIndex >= POLL_DELAYS.length) {
+                // All polls exhausted — re-enable UI
+                finishPolling();
+                return;
             }
-            renderTree();
+
+            const delay = POLL_DELAYS[pollIndex];
+            const elapsed = POLL_DELAYS.slice(0, pollIndex + 1).reduce((a, b) => a + b, 0);
+            if (syncBtn) syncBtn.innerText = `Polling (${Math.round(elapsed / 1000)}s)...`;
+            pollIndex++;
+
+            setTimeout(() => {
+                if (done) return;
+
+                // Refresh the AI tab and extract content
+                chrome.runtime.sendMessage({ type: "RELOAD_AND_EXTRACT", url }, (res) => {
+                    void chrome.runtime.lastError;
+                    if (done) return;
+
+                    if (!res || res.status !== "success" || !res.data) {
+                        // Extraction failed — try next poll
+                        console.log(`[REXOW] Poll ${pollIndex}: extraction failed, retrying...`);
+                        pollForResponse();
+                        return;
+                    }
+
+                    const { content, platform, messages = [] } = res.data;
+
+                    // Check if we got new content compared to what REXOW has
+                    if (messages.length > currentMsgCount) {
+                        const lastMsg = messages[messages.length - 1];
+
+                        if (lastMsg.role === 'assistant') {
+                            // AI has responded! Sync and stop
+                            console.log(`[REXOW] Poll ${pollIndex}: AI response detected, syncing`);
+                            done = true;
+                            updateChat(id, { content: content || "", platform: platform || null, messages });
+                            if (contentArea) {
+                                contentArea.innerHTML = buildMessagesHtml(messages, content);
+                                contentArea.scrollTop = contentArea.scrollHeight;
+                            }
+                            renderTree();
+                            finishPolling();
+                            return;
+                        } else {
+                            // Last message is user — AI still thinking
+                            console.log(`[REXOW] Poll ${pollIndex}: last msg is user, AI still thinking`);
+                            pollForResponse();
+                            return;
+                        }
+                    }
+
+                    // Same count — AI hasn't responded yet
+                    console.log(`[REXOW] Poll ${pollIndex}: no new messages yet (${messages.length} vs ${currentMsgCount})`);
+                    pollForResponse();
+                });
+            }, delay);
         }
+
+        function finishPolling() {
+            if (sendBtn) sendBtn.disabled = false;
+            if (syncBtn) { syncBtn.innerText = "SYNC CONTENT"; syncBtn.disabled = false; }
+            if (!done && contentArea) {
+                // All polls exhausted without response — show warning
+                const warningBubble = document.createElement('div');
+                warningBubble.className = 'msg-bubble';
+                warningBubble.style.cssText = `
+                    background: linear-gradient(145deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.05) 100%);
+                    border-left: 3px solid rgb(245, 158, 11);
+                    backdrop-filter: blur(10px);
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                `;
+                warningBubble.innerHTML = `
+                    <div class="msg-role" style="color: rgb(245, 158, 11); display: flex; align-items: center; gap: 6px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        SYSTEM
+                    </div>
+                    <div class="msg-text" style="color: rgba(255,255,255,0.9);">
+                        <p style="margin-bottom: 12px; font-size: 13px; line-height: 1.5;">No AI response detected after polling. The AI might still be thinking, or the message didn't send. Try clicking <b>SYNC CONTENT</b> or check the AI tab.</p>
+                        <button id="btnSwitchToAiTab" style="
+                            background: rgba(245, 158, 11, 0.2);
+                            color: rgb(253, 230, 138);
+                            border: 1px solid rgba(245, 158, 11, 0.3);
+                            padding: 6px 14px;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-family: inherit;
+                            font-size: 12px;
+                            font-weight: 500;
+                            transition: all 0.2s ease;
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 6px;
+                        ">
+                            Switch to AI Tab
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                        </button>
+                    </div>`;
+                contentArea.appendChild(warningBubble);
+                contentArea.scrollTop = contentArea.scrollHeight;
+
+                document.getElementById('btnSwitchToAiTab')?.addEventListener('click', () => {
+                    chrome.runtime.sendMessage({ type: "SWITCH_TO_AI_TAB", url });
+                });
+            }
+        }
+
+        // Start polling
+        pollForResponse();
     });
 }
 
