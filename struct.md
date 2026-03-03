@@ -28,7 +28,9 @@ wonderh-ai-manager/
 │   │   ├── marked.min.js            # marked v11.2.0 UMD
 │   │   ├── katex.min.js             # KaTeX v0.16.8
 │   │   ├── katex.min.css            # KaTeX styles
-│   │   └── marked-katex-extension.umd.js  # v4.0.5
+│   │   ├── marked-katex-extension.umd.js  # v4.0.5
+│   │   ├── highlight.min.js         # highlight.js v11.9.0
+│   │   └── hljs-github-dark.min.css # highlight.js theme
 │   ├── logo.png                     # Welcome screen logo
 │   └── background.jpg               # Optional background image
 │
@@ -123,6 +125,8 @@ Dashboard 透過 `chrome.runtime.connect({ name: "dashboard" })` 建立持久連
 | `SAVE_TO_DISK` | dashboard → background | `{ payload: appData }` | `{ status: "ok" }` or error |
 | `TRIGGER_EXTRACT` | dashboard → background | `{ url: string }` | `{ status, data }` or error |
 | `EXTRACT_CONTENT` | background → content script | — | `{ status, data }` or error |
+| `SEND_ONLY` | dashboard → background → content script | `{ url, text }` | `{ status: "success", sent: true }` |
+| `RELOAD_AND_EXTRACT`| dashboard → background | `{ url }` | `{ status, data }` (reloads tab first) |
 
 ### Error response shape
 
@@ -213,7 +217,10 @@ Service worker. Manages native port lifecycle and message routing.
 |---|---|---|
 | `SAVE_TO_DISK` | checks `nativePort !== null` | `nativePort.postMessage({ action: "save", data })` → `sendResponse({ status: "ok" })` |
 | `LOAD_DATA` | checks `nativePort !== null` | `nativePort.postMessage({ action: "load" })` — response comes async via `nativePort.onMessage` |
-| `TRIGGER_EXTRACT` | validates `req.url` is non-empty string | `chrome.tabs.query({})` → find tab by URL prefix → `chrome.tabs.sendMessage(EXTRACT_CONTENT)` → relay result; returns `true` to keep channel open |
+| `TRIGGER_EXTRACT` | validates `url` | `chrome.tabs.query` → find tab → `tabs.sendMessage(EXTRACT_CONTENT)` → relay result |
+| `SEND_ONLY` | validates `url`, `text`| `chrome.tabs.query` → find tab → `tabs.sendMessage(SEND_ONLY)` → returns immediately after clicking send |
+| `RELOAD_AND_EXTRACT`| validates `url` | `chrome.tabs.query` → find tab → `tabs.reload()` → waits for `onUpdated` complete → `tabs.sendMessage(EXTRACT_CONTENT)` |
+| `SWITCH_TO_AI_TAB` | validates `url` | `chrome.tabs.query` → find tab → `tabs.update({active: true})` → `windows.update({focused: true})` |
 
 **`nativePort.onMessage` handler:**
 Native host responds with `{ status: "ok", data: { folders, chats } }` for load, or `{ status: "ok" }` for save.
@@ -296,12 +303,9 @@ Content script. Listens for `EXTRACT_CONTENT`, routes to correct adapter via dyn
 
 **DOM strategy:**
 1. Title: `h1[class*="conversation-title"]` → fallback `document.title`
-2. Messages: Checks `infinite-scroller` for explicit `<user-query>` and `<model-response>` elements. If found, assigns roles and builds content array.
-3. Fallback Content: `infinite-scroller` innerText, filtered through `NOISE_LINES` Set (returns `messages: []`).
-4. Fallback: `document.body.innerText` if no scroller (throws if < 100 chars)
-5. Throws if cleaned content is empty after filtering
-
-**Filtered noise lines:** `Show drafts`, `Regenerate`, `Modify response`, `Listen`, `Share`, `More`
+2. Messages: Converts rich HTML inside `<model-response>` and `.query-text-line` elements back to standard Markdown (`_domToMarkdown` loop).
+3. Detects specific elements: code blocks + highlight.js language detection, inline and display LaTeX equations (reads `data-math`), structured tables (`_tableToMarkdown`), lists, formatting (bold/italic).
+4. Fallback Content: `infinite-scroller` innerText, filtered through `NOISE_LINES` Set (returns `messages: []`).
 
 **Test targets:** `test/adapters.test.js`
 - Unit: extracts explicit user-query and model-response elements into structured messages
@@ -649,8 +653,11 @@ global.fetch = jest.fn().mockRejectedValue(new TypeError("Failed to fetch"));
 
 ### Session 8
 - **Markdown & LaTeX rendering**: Added `markdown.js` using `marked v11.2.0` + `marked-katex-extension v4.0.5` + `katex v0.16.8` (all bundled locally in `assets/lib/` to avoid MV3 CSP restrictions)
-- **CSS modularisation**: Split 998-line `dashboard.css` into 6 modular files (`base.css`, `sidebar.css`, `workspace.css`, `chat.css`, `markdown.css`, `panel.css`); `dashboard.css` is now an `@import` hub
-- **Send message improvements**: Messages are sent to AI, MutationObserver waits for response completion, then content is extracted directly (no tab reload — reload was causing Gemini to navigate to outline page)
-- **Gemini adapter**: Added `sendMessage()`, `waitForResponse()`, `prepareForExtract()` methods
-- **Tests**: 118 tests across 8 suites; added `content_extractor.test.js`, `gemini_extended.test.js`, `dashboard_modules.test.js`, `events.test.js`
-- **Documentation**: Updated `README.md` (release-ready), `struct.md` (new files), `.gitignore` (added `tmp-voyager/`)
+- **CSS modularisation**: Split 998-line `dashboard.css` into 6 modular files.
+- **Background Routing**: Added new routing architecture with long-lived native ports.
+
+### Session 9 (Newest)
+- **Gemini HTML to Markdown**: Rewrote Gemini adapter extraction (`_domToMarkdown`) to traverse raw DOM and convert rich HTML (tables, inline/display LaTeX, code blocks, bold/italics) back to clean Markdown, replacing broken `innerText` method. Prevented table extraction from swallowing surrounding content.
+- **Poll-based Send Message Algorithm**: Replaced unreliable MutationObserver wait with a robust polling system. Dashboard uses `SEND_ONLY` (inject + click send, returns immediately), then polls at `[5s, 10s, 15s, 30s, 45s, 60s]` using `RELOAD_AND_EXTRACT` to refresh the AI background tab and diff the messages.
+- **Syntax Highlighting**: Integrated `highlight.js v11.9.0` (github-dark theme) into the dashboard markdown renderer.
+- **Bug fixes**: Fixed `SWITCH_TO_AI_TAB` mapping; dashboard now reliably calls `renderMarkdown` for assistant messages. All 118 unit tests passing.
