@@ -564,13 +564,17 @@ export default class GeminiAdapter {
 
     /**
      * Wait for Gemini to finish its AI response using MutationObserver.
+     * Detects both new model-response elements AND in-place content changes.
+     * Resolves when DOM mutations stop for 2 seconds (response complete).
+     * @param {number} maxWaitMs - Maximum time to wait (default 60s)
      */
-    waitForResponse(maxWaitMs = 120000) {
+    waitForResponse(maxWaitMs = 60000) {
         return new Promise((resolve) => {
             const startCount = document.querySelectorAll('model-response').length;
             let settled = false;
             let settleTimer = null;
-            const SETTLE_DELAY = 1000;
+            let mutationSeen = false;
+            const SETTLE_DELAY = 2000; // 2s of DOM silence = response done
 
             const target =
                 document.querySelector('infinite-scroller') ||
@@ -579,11 +583,11 @@ export default class GeminiAdapter {
                 document.body;
 
             const observer = new MutationObserver(() => {
+                mutationSeen = true;
+                // Reset settle timer on every mutation
                 if (settleTimer) clearTimeout(settleTimer);
-                const currentCount = document.querySelectorAll('model-response').length;
-                if (currentCount > startCount) {
-                    settleTimer = setTimeout(() => finish(), SETTLE_DELAY);
-                }
+                // Start settle countdown — resolves if no more mutations for SETTLE_DELAY
+                settleTimer = setTimeout(() => finish(), SETTLE_DELAY);
             });
 
             observer.observe(target, {
@@ -592,17 +596,27 @@ export default class GeminiAdapter {
                 characterData: true
             });
 
+            // Max timeout — resolves even if mutations never stop
             const maxTimer = setTimeout(() => {
                 console.log('[REXOW] waitForResponse: max timeout reached');
                 finish();
             }, maxWaitMs);
 
+            // Periodic check: if we see a new model-response AND mutations stopped, finish
             const checkInterval = setInterval(() => {
                 const currentCount = document.querySelectorAll('model-response').length;
-                if (currentCount > startCount && !settleTimer) {
+                if (currentCount > startCount && !settleTimer && mutationSeen) {
                     settleTimer = setTimeout(() => finish(), SETTLE_DELAY);
                 }
-            }, 3000);
+                // Also check: if the send button re-appeared (Gemini enables it after response)
+                const sendBtn = document.querySelector('.send-button:not([disabled])') ||
+                    document.querySelector('button[aria-label*="Send"]:not([disabled])');
+                if (sendBtn && mutationSeen) {
+                    // Send button is enabled again → response likely complete
+                    if (settleTimer) clearTimeout(settleTimer);
+                    settleTimer = setTimeout(() => finish(), 500);
+                }
+            }, 1000);
 
             function finish() {
                 if (settled) return;

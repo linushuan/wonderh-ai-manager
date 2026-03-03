@@ -5,6 +5,7 @@ import { getAppData, setCurrentId, getExpandedFolders } from './store.js';
 import { assignColors, getColor } from './colors.js';
 import { Icons } from './icons.js';
 import { renderTree } from './tree.js';
+import { renderMarkdown } from './markdown.js';
 
 export function renderMainView(id, type) {
     const container = document.getElementById('contentView');
@@ -111,15 +112,19 @@ function renderMessagesHtml(messages, content) {
     if (messages && messages.length > 0) {
         return messages.map(m => {
             const roleClass = (m.role === 'user') ? 'msg-user' : 'msg-assistant';
+            // Use renderMarkdown for assistant messages, escape user text
+            const htmlContent = m.role === 'user'
+                ? `<div style="white-space: pre-wrap;">${(m.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`
+                : `<div class="markdown-body">${renderMarkdown(m.text || '')}</div>`;
             return `
             <div class="msg-bubble ${roleClass}">
             <div class="msg-role">${(m.role || 'unknown').toUpperCase()}</div>
-            <div class="msg-text">${m.text || ''}</div>
+            <div class="msg-text">${htmlContent}</div>
             </div>`;
         }).join('');
     }
     if (content && content.trim()) {
-        return `<div class="content-raw">${content}</div>`;
+        return `<div class="content-raw markdown-body">${renderMarkdown(content)}</div>`;
     }
     return `<div style="text-align:center; padding:40px; color:var(--text-muted);">
     <p>No content synced yet.</p>

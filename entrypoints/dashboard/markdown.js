@@ -1,10 +1,10 @@
 /**
- * markdown.js — Markdown + LaTeX Rendering
+ * markdown.js — Markdown + LaTeX + Syntax Highlighting
  *
- * Uses the global `marked` and `markedKatex` objects loaded via
- * <script> tags in dashboard.html (UMD builds).
- *
- * marked v11.2.0 + marked-katex-extension v4.0.5 (bundles katex internally)
+ * Uses global libraries loaded via <script> tags in dashboard.html:
+ *   - marked v11.2.0          → window.marked
+ *   - marked-katex-ext v4.0.5 → window.markedKatex  (bundles katex internally)
+ *   - highlight.js v11.9.0    → window.hljs
  */
 
 let _initialized = false;
@@ -12,9 +12,9 @@ let _initialized = false;
 function ensureInit() {
     if (_initialized) return true;
 
-    // Access globals via window — ES modules have their own scope
     const _marked = window.marked;
     const _markedKatex = window.markedKatex;
+    const _hljs = window.hljs;
 
     if (!_marked || typeof _marked.parse !== 'function') {
         console.warn("[REXOW] marked library not loaded");
@@ -26,15 +26,36 @@ function ensureInit() {
         if (typeof _markedKatex === 'function') {
             _marked.use(_markedKatex({
                 throwOnError: false
-                // v4.0.5 does not have 'nonStandard' option
-                // It supports $...$ (inline) and $$...$$ (block) by default
             }));
-            console.log("[REXOW] Markdown + KaTeX initialized");
         } else {
             console.warn("[REXOW] markedKatex not loaded, LaTeX won't render");
         }
 
+        // Configure highlight.js for code syntax highlighting
+        if (_hljs) {
+            _marked.use({
+                renderer: {
+                    code(text, lang) {
+                        // `text` is the code string, `lang` is the language hint
+                        const language = lang && _hljs.getLanguage(lang) ? lang : null;
+                        try {
+                            const highlighted = language
+                                ? _hljs.highlight(text, { language }).value
+                                : _hljs.highlightAuto(text).value;
+                            return `<pre><code class="hljs${language ? ` language-${language}` : ''}">${highlighted}</code></pre>`;
+                        } catch {
+                            return `<pre><code class="hljs">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
+                        }
+                    }
+                }
+            });
+            console.log("[REXOW] Highlight.js initialized");
+        } else {
+            console.warn("[REXOW] highlight.js not loaded, code won't be highlighted");
+        }
+
         _initialized = true;
+        console.log("[REXOW] Markdown + KaTeX + highlight.js initialized");
         return true;
     } catch (e) {
         console.error("[REXOW] Markdown init error:", e);
@@ -43,7 +64,8 @@ function ensureInit() {
 }
 
 /**
- * Parses raw markdown text into safe HTML, rendering LaTeX math blocks.
+ * Parses raw markdown text into safe HTML, rendering LaTeX math blocks
+ * and syntax-highlighted code blocks.
  * @param {string} text - The raw markdown text  
  * @returns {string} - The resulting HTML
  */
