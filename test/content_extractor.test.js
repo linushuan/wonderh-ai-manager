@@ -76,10 +76,6 @@ describe('content_extractor', () => {
         expect(buttons.length).toBe(1);
     });
 
-    test('message handler exists', () => {
-        expect(typeof messageHandler).toBe('function');
-    });
-
     test('EXTRACT_CONTENT returns true for async', () => {
         const sendResponse = jest.fn();
         const result = messageHandler({ type: 'EXTRACT_CONTENT', url: 'https://chatgpt.com' }, {}, sendResponse);

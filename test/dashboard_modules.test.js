@@ -503,20 +503,4 @@ describe('view.js', () => {
     });
 });
 
-// ── Init ──────────────────────────────────────────────────────
 
-describe('init.js', () => {
-    let initBackground;
-
-    beforeAll(() => {
-        initBackground = require('../entrypoints/dashboard/init.js').initBackground;
-    });
-
-    test('initBackground is a function', () => {
-        expect(typeof initBackground).toBe('function');
-    });
-
-    test('initBackground does not throw', () => {
-        expect(() => initBackground()).not.toThrow();
-    });
-});

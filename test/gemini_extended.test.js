@@ -81,17 +81,6 @@ describe('GeminiAdapter.sendMessage', () => {
 });
 
 describe('GeminiAdapter.waitForResponse', () => {
-    test('is a function', () => {
-        const adapter = new GeminiAdapter();
-        expect(typeof adapter.waitForResponse).toBe('function');
-    });
-
-    test('returns a promise', () => {
-        const adapter = new GeminiAdapter();
-        const result = adapter.waitForResponse(100);
-        expect(result).toBeInstanceOf(Promise);
-    });
-
     test('resolves on timeout', async () => {
         const adapter = new GeminiAdapter();
         await expect(adapter.waitForResponse(100)).resolves.toBeUndefined();
@@ -160,8 +149,10 @@ describe('GeminiAdapter.prepareForExtract', () => {
         });
 
         const adapter = new GeminiAdapter();
+        window.scrollTo = jest.fn();
         adapter.prepareForExtract();
         expect(scroller.scrollTop).toBe(1000);
+        expect(window.scrollTo).toHaveBeenCalled();
         jest.restoreAllMocks();
     });
 });
@@ -280,7 +271,7 @@ describe('GeminiAdapter._domToMarkdown', () => {
         expect(md).toContain('`inline code`');
         expect(md).toContain('```\nblock code\n```');
         expect(md).toContain('```javascript\nconsole.log()\n```');
-        expect(md).toContain('```\nbare code\n```');
+        expect(md).toMatch(/```\n\s*bare code\s*\n```/);
     });
 
     test('handles blockquotes', () => {

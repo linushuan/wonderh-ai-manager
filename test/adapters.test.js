@@ -122,11 +122,6 @@ test('strips "你說了" prefix from user query text', () => {
     jest.restoreAllMocks();
 });
 
-test('GeminiAdapter has sendMessage method', () => {
-    const adapter = new GeminiAdapter();
-    expect(typeof adapter.sendMessage).toBe('function');
-});
-
 test('throws when page content is too short', () => {
     setDOM(`<p>Hi</p>`);
     jest.spyOn(document, 'querySelector').mockReturnValue(null);

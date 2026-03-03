@@ -56,13 +56,6 @@ describe('events.js', () => {
         delete global.markedKatex;
     });
 
-    test('initEvents is a function', () => {
-        expect(typeof initEvents).toBe('function');
-    });
-
-    test('initEvents does not throw', () => {
-        expect(() => initEvents()).not.toThrow();
-    });
 
     test('brandHome click is wired', () => {
         initEvents();
