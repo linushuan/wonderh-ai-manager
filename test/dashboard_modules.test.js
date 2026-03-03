@@ -453,7 +453,7 @@ describe('view.js', () => {
         const store = require('../entrypoints/dashboard/store.js');
         store.setAppData({
             folders: [{ id: 'f1', name: 'Test Folder', parentId: null, notes: 'Some notes' }],
-            chats: [{ id: 'c1', name: 'Test Chat', parentId: 'f1', url: 'https://test.com', content: 'test content', messages: [], notes: 'chat notes', summary: 'summary text' }]
+            chats: [{ id: 'c1', name: 'Test Chat', parentId: 'f1', url: 'https://test.com', content: 'test content', messages: [{ role: 'user', text: 'hi' }, { role: 'assistant', text: 'hello' }], notes: 'chat notes', summary: 'summary text' }]
         });
 
         const view = require('../entrypoints/dashboard/view.js');
@@ -500,6 +500,36 @@ describe('view.js', () => {
 
     test('renderMainView handles missing chat gracefully', () => {
         expect(() => renderMainView('nonexistent', 'chat')).not.toThrow();
+    });
+
+    test('chat view renders textarea for message input', () => {
+        renderMainView('c1', 'chat');
+        const textarea = document.getElementById('sendMessageInput');
+        expect(textarea).not.toBeNull();
+        expect(textarea.tagName).toBe('TEXTAREA');
+        expect(textarea.placeholder).toContain('Shift+Enter');
+    });
+
+    test('chat view renders copy buttons for messages', () => {
+        renderMainView('c1', 'chat');
+        const copyBtns = document.querySelectorAll('.btn-copy-msg');
+        // The chat has 2 messages, so expect 2 copy buttons
+        expect(copyBtns.length).toBe(2);
+        // Each should have a data-copy attribute (base64 encoded)
+        copyBtns.forEach(btn => {
+            expect(btn.dataset.copy).toBeDefined();
+            expect(btn.dataset.copy.length).toBeGreaterThan(0);
+        });
+    });
+
+    test('renderMessagesHtml includes copy buttons and msg-headers', () => {
+        renderMainView('c1', 'chat');
+        const headers = document.querySelectorAll('.msg-header');
+        expect(headers.length).toBe(2);
+        headers.forEach(header => {
+            expect(header.querySelector('.msg-role')).not.toBeNull();
+            expect(header.querySelector('.btn-copy-msg')).not.toBeNull();
+        });
     });
 });
 

@@ -186,7 +186,7 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
         });
         sendResponse({ status: "ok" });
         return true;
-    } else if (req.type === "RELOAD_AND_EXTRACT") {
+    } else if (req.type === "WAIT_AND_EXTRACT") {
         if (!req.url) {
             sendResponse({ status: "error", msg: "No URL provided." });
             return true;
@@ -199,26 +199,13 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
                 return;
             }
 
-            // 1. Reload the tab
-            chrome.tabs.reload(target.id);
-
-            // 2. Wait for it to finish loading, then extract
-            const onUpdated = (tabId, changeInfo) => {
-                if (tabId === target.id && changeInfo.status === 'complete') {
-                    chrome.tabs.onUpdated.removeListener(onUpdated);
-
-                    // Give the page a moment to initialize its scripts
-                    setTimeout(() => {
-                        chrome.tabs.sendMessage(target.id, { type: "EXTRACT_CONTENT" }, (res) => {
-                            const err = chrome.runtime.lastError;
-                            if (err) { sendResponse({ status: "error", msg: err.message, detail: "Try refreshing the AI tab again." }); return; }
-                            if (!res) { sendResponse({ status: "error", msg: "No response from content script." }); return; }
-                            sendResponse(res);
-                        });
-                    }, 2000);
-                }
-            };
-            chrome.tabs.onUpdated.addListener(onUpdated);
+            // Forward to content script — it handles waitForResponse + extract
+            chrome.tabs.sendMessage(target.id, { type: "WAIT_AND_EXTRACT" }, (res) => {
+                const err = chrome.runtime.lastError;
+                if (err) { sendResponse({ status: "error", msg: err.message, detail: "Try refreshing the AI tab." }); return; }
+                if (!res) { sendResponse({ status: "error", msg: "No response from content script." }); return; }
+                sendResponse(res);
+            });
         });
         return true;
     }

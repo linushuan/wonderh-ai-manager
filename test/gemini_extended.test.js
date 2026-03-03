@@ -274,9 +274,53 @@ describe('GeminiAdapter._domToMarkdown', () => {
         expect(md).toMatch(/```\n\s*bare code\s*\n```/);
     });
 
-    test('handles blockquotes', () => {
+    test('handles basic blockquote', () => {
         setDOM('<blockquote>quoted text</blockquote>');
-        expect(adapter._domToMarkdown(document.body).trim()).toBe('> quoted text');
+        expect(adapter._domToMarkdown(document.body).trim()).toContain('> quoted text');
+    });
+
+    test('handles nested blockquote', () => {
+        setDOM('<blockquote><p>outer</p><blockquote><p>inner</p></blockquote></blockquote>');
+        const md = adapter._domToMarkdown(document.body).trim();
+        expect(md).toContain('> outer');
+        expect(md).toContain('> > inner');
+    });
+
+    test('handles blockquote with bold and italic', () => {
+        setDOM('<blockquote><p><strong>Bold title</strong></p><p><em>italic note</em></p></blockquote>');
+        const md = adapter._domToMarkdown(document.body).trim();
+        expect(md).toContain('> **Bold title**');
+        expect(md).toContain('> *italic note*');
+    });
+
+    test('handles blockquote with list', () => {
+        setDOM('<blockquote><p>Tips:</p><ul><li>Item A</li><li>Item B</li></ul></blockquote>');
+        const md = adapter._domToMarkdown(document.body).trim();
+        expect(md).toContain('> Tips:');
+        expect(md).toContain('> - Item A');
+        expect(md).toContain('> - Item B');
+    });
+
+    test('handles blockquote with inline math', () => {
+        setDOM('<blockquote><p>If effort is <span class="math-inline" data-math="E">E</span> then success is:</p></blockquote>');
+        const md = adapter._domToMarkdown(document.body).trim();
+        expect(md).toContain('> ');
+        expect(md).toContain('$E$');
+    });
+
+    test('handles blockquote with display math', () => {
+        setDOM('<blockquote><p>The formula:</p><div class="math-block" data-math="S = E \\times C^2"></div></blockquote>');
+        const md = adapter._domToMarkdown(document.body).trim();
+        expect(md).toContain('> The formula:');
+        expect(md).toContain('$$');
+        expect(md).toContain('S = E \\times C^2');
+    });
+
+    test('handles blockquote with multiple paragraphs', () => {
+        setDOM('<blockquote><p>Paragraph one.</p><p>Paragraph two.</p></blockquote>');
+        const md = adapter._domToMarkdown(document.body).trim();
+        expect(md).toContain('> Paragraph one.');
+        expect(md).toContain('> Paragraph two.');
     });
 
     test('handles unordered lists', () => {

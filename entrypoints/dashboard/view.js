@@ -88,7 +88,7 @@ export function renderChatView(chat) {
     </div>
 
     <div class="chat-send-bar">
-    <input id="sendMessageInput" type="text" placeholder="Type a message to send to AI..." autocomplete="off" />
+    <textarea id="sendMessageInput" rows="2" placeholder="Type a message to send to AI...  (Shift+Enter for new line)" autocomplete="off"></textarea>
     <button id="btnSendMessage" class="btn-send" title="Send message">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
     </button>
@@ -112,13 +112,21 @@ function renderMessagesHtml(messages, content) {
     if (messages && messages.length > 0) {
         return messages.map(m => {
             const roleClass = (m.role === 'user') ? 'msg-user' : 'msg-assistant';
+            const rawText = (m.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             // Use renderMarkdown for assistant messages, escape user text
             const htmlContent = m.role === 'user'
-                ? `<div style="white-space: pre-wrap;">${(m.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`
+                ? `<div style="white-space: pre-wrap;">${rawText}</div>`
                 : `<div class="markdown-body">${renderMarkdown(m.text || '')}</div>`;
+            // Encode raw text for copy button (use base64 to avoid attribute escaping issues)
+            const copyData = btoa(unescape(encodeURIComponent(m.text || '')));
             return `
             <div class="msg-bubble ${roleClass}">
+            <div class="msg-header">
             <div class="msg-role">${(m.role || 'unknown').toUpperCase()}</div>
+            <button class="btn-copy-msg" data-copy="${copyData}" title="Copy message">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            </div>
             <div class="msg-text">${htmlContent}</div>
             </div>`;
         }).join('');

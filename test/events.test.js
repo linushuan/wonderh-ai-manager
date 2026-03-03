@@ -160,18 +160,50 @@ describe('events.js', () => {
         }
     });
 
-    test('send message input and button', () => {
+    test('send message textarea and button', () => {
         initEvents();
         const view = require('../entrypoints/dashboard/view.js');
         view.selectItem('c1', 'chat');
 
         const sendInput = document.getElementById('sendMessageInput');
         const sendBtn = document.getElementById('btnSendMessage');
+        const spy = jest.spyOn(chrome.runtime, 'sendMessage');
 
         if (sendInput && sendBtn) {
-            sendInput.value = 'test message';
+            expect(sendInput.tagName).toBe('TEXTAREA');
+            sendInput.value = 'test textarea message';
             sendBtn.click();
+            expect(spy).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'SEND_ONLY',
+                text: 'test textarea message'
+            }), expect.any(Function));
         }
+        spy.mockRestore();
+    });
+
+    test('copy message button click copies text', async () => {
+        initEvents();
+        const view = require('../entrypoints/dashboard/view.js');
+        view.selectItem('c1', 'chat');
+
+        const mockClipboard = {
+            writeText: jest.fn().mockResolvedValue()
+        };
+        Object.assign(navigator, {
+            clipboard: mockClipboard
+        });
+
+        const copyBtns = document.querySelectorAll('.btn-copy-msg');
+        expect(copyBtns.length).toBeGreaterThan(0);
+
+        // Setup raw text we expect to be copied (from store mocks above, chat 1 has "hi" and "hello")
+        copyBtns[0].click();
+
+        // We decode the base64 in events.js to copy it. Let's see if writeText was called.
+        // Wait for next tick since writeText is async
+        await Promise.resolve();
+
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith('hi');
     });
 
     test('URL change triggers save', () => {

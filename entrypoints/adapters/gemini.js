@@ -198,8 +198,10 @@ export default class GeminiAdapter {
 
             // ── Blockquote ──
             if (tag === 'BLOCKQUOTE') {
-                const text = this._inlineToMarkdown(el);
-                const quoted = text.split('\n').map(l => `> ${l}`).join('\n');
+                // Recursively convert children to markdown to preserve
+                // nested quotes, bold, lists, math, paragraph breaks, etc.
+                const innerMd = this._domToMarkdown(el);
+                const quoted = innerMd.split('\n').map(l => `> ${l}`).join('\n');
                 parts.push(`\n\n${quoted}\n\n`);
                 continue;
             }

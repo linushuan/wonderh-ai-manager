@@ -180,11 +180,11 @@
     padding: 12px 20px;
     border-top: 1px solid var(--border);
     flex-shrink: 0;
-    align-items: center;
+    align-items: flex-end;
     background: var(--bg-sidebar);
 }
 
-.chat-send-bar input {
+.chat-send-bar textarea {
     flex: 1;
     background: var(--bg-panel);
     border: 1px solid var(--border);
@@ -193,12 +193,18 @@
     color: var(--text-main);
     font-size: 14px;
     font-family: inherit;
+    line-height: 1.5;
+    min-height: 48px;
+    max-height: 120px;
+    resize: none;
+    overflow-y: auto;
     transition: border-color 0.2s;
 }
 
-.chat-send-bar input:focus {
+.chat-send-bar textarea:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-glow);
+    outline: none;
 }
 
 .btn-send {
@@ -214,6 +220,7 @@
     cursor: pointer;
     transition: all 0.2s;
     flex-shrink: 0;
+    margin-bottom: 4px;
 }
 
 .btn-send:hover {
@@ -231,4 +238,52 @@
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
+}
+
+/* --- Message Header (role + copy btn) --- */
+.msg-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.btn-copy-msg {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+}
+
+.msg-bubble:hover .btn-copy-msg {
+    opacity: 0.6;
+}
+
+.btn-copy-msg:hover {
+    opacity: 1 !important;
+    border-color: var(--border);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-main);
+}
+
+.btn-copy-msg.copied {
+    opacity: 1 !important;
+    color: #34d399;
+    border-color: rgba(52, 211, 153, 0.3);
+}
+@media (max-width: 480px) {
+  .chat-send-bar {
+    border-radius: 0;
+    margin: 0;
+    width: 100%;
+    padding: 10px;
+  }
 }

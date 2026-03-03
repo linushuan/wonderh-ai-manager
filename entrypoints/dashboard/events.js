@@ -204,11 +204,40 @@ export function initEvents() {
         }
     });
 
-    // ── Send message via Enter key ───────────────────────────
+    // ── Send message via Enter key (Shift+Enter adds newline) ─
     document.getElementById('contentView').addEventListener('keydown', (e) => {
         if (e.target.id === 'sendMessageInput' && e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSendMessage();
+        }
+    });
+
+    // ── Textarea auto-resize ─────────────────────────────────
+    document.getElementById('contentView').addEventListener('input', (e) => {
+        if (e.target.id === 'sendMessageInput' && e.target.tagName === 'TEXTAREA') {
+            e.target.style.height = 'auto';
+            e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+        }
+    });
+
+    // ── Copy message button ──────────────────────────────────
+    document.getElementById('contentView').addEventListener('click', (e) => {
+        const copyBtn = e.target.closest('.btn-copy-msg');
+        if (!copyBtn) return;
+        const encoded = copyBtn.dataset.copy;
+        if (!encoded) return;
+        try {
+            const text = decodeURIComponent(escape(atob(encoded)));
+            navigator.clipboard.writeText(text).then(() => {
+                copyBtn.classList.add('copied');
+                copyBtn.title = 'Copied!';
+                setTimeout(() => {
+                    copyBtn.classList.remove('copied');
+                    copyBtn.title = 'Copy message';
+                }, 1500);
+            });
+        } catch (_) {
+            console.warn('[REXOW] Copy failed');
         }
     });
 }
@@ -226,14 +255,24 @@ function handleSendMessage() {
     if (!text) return;
 
     input.value = '';
+    // Reset textarea height
+    if (input.tagName === 'TEXTAREA') {
+        input.style.height = 'auto';
+    }
 
     // Optimistically add user message bubble
     const contentArea = document.getElementById('chatContentArea');
     if (contentArea) {
+        const copyData = btoa(unescape(encodeURIComponent(text)));
         const bubble = document.createElement('div');
         bubble.className = 'msg-bubble msg-user';
         bubble.innerHTML = `
+            <div class="msg-header">
             <div class="msg-role">USER</div>
+            <button class="btn-copy-msg" data-copy="${copyData}" title="Copy message">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            </div>
             <div class="msg-text"><div style="white-space: pre-wrap;">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div></div>`;
         contentArea.appendChild(bubble);
         contentArea.scrollTop = contentArea.scrollHeight;
@@ -245,7 +284,7 @@ function handleSendMessage() {
     if (sendBtn) sendBtn.disabled = true;
     if (syncBtn) { syncBtn.innerText = "Sending..."; syncBtn.disabled = true; }
 
-    // Step 1: Send the message (returns immediately via SEND_ONLY)
+    // Step 1: Send the message (fast, returns immediately)
     chrome.runtime.sendMessage({ type: "SEND_ONLY", url, text }, (sendRes) => {
         void chrome.runtime.lastError;
         if (!sendRes || sendRes.status !== "success") {
@@ -256,124 +295,114 @@ function handleSendMessage() {
             return;
         }
 
-        // Step 2: Poll at progressive intervals to check for AI response
-        const POLL_DELAYS = [5000, 10000, 15000, 30000, 45000, 60000]; // 5s, 10s, 15s, 30s, 45s, 60s
-        const currentMsgCount = (chat.messages || []).length;
-        let pollIndex = 0;
-        let done = false;
-
+        // Step 2: Switch to AI tab so user can verify message was sent
         if (syncBtn) syncBtn.innerText = "Waiting for AI...";
+        chrome.runtime.sendMessage({ type: "SWITCH_TO_AI_TAB", url });
 
-        function pollForResponse() {
-            if (done || pollIndex >= POLL_DELAYS.length) {
-                // All polls exhausted — re-enable UI
-                finishPolling();
+        // Step 3: Wait for AI response then extract (content script handles the wait)
+        chrome.runtime.sendMessage({ type: "WAIT_AND_EXTRACT", url }, (res) => {
+            void chrome.runtime.lastError;
+
+            if (sendBtn) sendBtn.disabled = false;
+            if (syncBtn) { syncBtn.innerText = "SYNC CONTENT"; syncBtn.disabled = false; }
+
+            if (!res || res.status !== "success" || !res.data) {
+                // Wait/extract failed — show warning
+                if (contentArea) {
+                    showWaitFailedWarning(contentArea, url);
+                }
                 return;
             }
 
-            const delay = POLL_DELAYS[pollIndex];
-            const elapsed = POLL_DELAYS.slice(0, pollIndex + 1).reduce((a, b) => a + b, 0);
-            if (syncBtn) syncBtn.innerText = `Polling (${Math.round(elapsed / 1000)}s)...`;
-            pollIndex++;
+            // Step 4: Sync conversation in background
+            const { content, platform, messages = [] } = res.data;
+            updateChat(id, { content: content || "", platform: platform || null, messages });
+            if (contentArea) {
+                contentArea.innerHTML = buildMessagesHtml(messages, content);
+                contentArea.scrollTop = contentArea.scrollHeight;
+            }
+            renderTree();
 
-            setTimeout(() => {
-                if (done) return;
-
-                // Refresh the AI tab and extract content
-                chrome.runtime.sendMessage({ type: "RELOAD_AND_EXTRACT", url }, (res) => {
-                    void chrome.runtime.lastError;
-                    if (done) return;
-
-                    if (!res || res.status !== "success" || !res.data) {
-                        // Extraction failed — try next poll
-                        console.log(`[REXOW] Poll ${pollIndex}: extraction failed, retrying...`);
-                        pollForResponse();
-                        return;
-                    }
-
-                    const { content, platform, messages = [] } = res.data;
-
-                    // Check if we got new content compared to what REXOW has
-                    if (messages.length > currentMsgCount) {
-                        const lastMsg = messages[messages.length - 1];
-
-                        if (lastMsg.role === 'assistant') {
-                            // AI has responded! Sync and stop
-                            console.log(`[REXOW] Poll ${pollIndex}: AI response detected, syncing`);
-                            done = true;
-                            updateChat(id, { content: content || "", platform: platform || null, messages });
-                            if (contentArea) {
-                                contentArea.innerHTML = buildMessagesHtml(messages, content);
-                                contentArea.scrollTop = contentArea.scrollHeight;
-                            }
-                            renderTree();
-                            finishPolling();
-                            return;
-                        } else {
-                            // Last message is user — AI still thinking
-                            console.log(`[REXOW] Poll ${pollIndex}: last msg is user, AI still thinking`);
-                            pollForResponse();
-                            return;
-                        }
-                    }
-
-                    // Same count — AI hasn't responded yet
-                    console.log(`[REXOW] Poll ${pollIndex}: no new messages yet (${messages.length} vs ${currentMsgCount})`);
-                    pollForResponse();
-                });
-            }, delay);
-        }
-
-        function finishPolling() {
-            if (sendBtn) sendBtn.disabled = false;
-            if (syncBtn) { syncBtn.innerText = "SYNC CONTENT"; syncBtn.disabled = false; }
-            if (!done && contentArea) {
-                // All polls exhausted without response — show warning
-                const warningBubble = document.createElement('div');
-                warningBubble.className = 'msg-bubble';
-                warningBubble.style.cssText = `
-                    background: linear-gradient(145deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.05) 100%);
-                    border-left: 3px solid rgb(245, 158, 11);
-                    backdrop-filter: blur(10px);
-                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            // Step 5: Let user switch back to REXOW
+            if (contentArea) {
+                const switchBubble = document.createElement('div');
+                switchBubble.className = 'msg-bubble';
+                switchBubble.style.cssText = `
+                    background: linear-gradient(145deg, rgba(16, 185, 129, 0.12) 0%, rgba(16, 185, 129, 0.04) 100%);
+                    border-left: 3px solid rgb(16, 185, 129);
+                    text-align: center;
+                    padding: 12px;
                 `;
-                warningBubble.innerHTML = `
-                    <div class="msg-role" style="color: rgb(245, 158, 11); display: flex; align-items: center; gap: 6px;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                        SYSTEM
-                    </div>
-                    <div class="msg-text" style="color: rgba(255,255,255,0.9);">
-                        <p style="margin-bottom: 12px; font-size: 13px; line-height: 1.5;">No AI response detected after polling. The AI might still be thinking, or the message didn't send. Try clicking <b>SYNC CONTENT</b> or check the AI tab.</p>
-                        <button id="btnSwitchToAiTab" style="
-                            background: rgba(245, 158, 11, 0.2);
-                            color: rgb(253, 230, 138);
-                            border: 1px solid rgba(245, 158, 11, 0.3);
-                            padding: 6px 14px;
-                            border-radius: 6px;
-                            cursor: pointer;
-                            font-family: inherit;
-                            font-size: 12px;
-                            font-weight: 500;
-                            transition: all 0.2s ease;
-                            display: inline-flex;
-                            align-items: center;
-                            gap: 6px;
-                        ">
-                            Switch to AI Tab
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                        </button>
-                    </div>`;
-                contentArea.appendChild(warningBubble);
+                switchBubble.innerHTML = `
+                    <button id="btnSwitchToRexow" style="
+                        background: rgba(16, 185, 129, 0.2);
+                        color: rgb(110, 231, 183);
+                        border: 1px solid rgba(16, 185, 129, 0.3);
+                        padding: 8px 18px;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        font-family: inherit;
+                        font-size: 13px;
+                        font-weight: 600;
+                        transition: all 0.2s ease;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 8px;
+                    ">
+                        ✓ AI responded — Switch back to REXOW
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                    </button>`;
+                contentArea.appendChild(switchBubble);
                 contentArea.scrollTop = contentArea.scrollHeight;
 
-                document.getElementById('btnSwitchToAiTab')?.addEventListener('click', () => {
-                    chrome.runtime.sendMessage({ type: "SWITCH_TO_AI_TAB", url });
+                document.getElementById('btnSwitchToRexow')?.addEventListener('click', () => {
+                    chrome.runtime.sendMessage({ type: "SWITCH_TO_REXOW" });
                 });
             }
-        }
+        });
+    });
+}
 
-        // Start polling
-        pollForResponse();
+function showWaitFailedWarning(contentArea, url) {
+    const warningBubble = document.createElement('div');
+    warningBubble.className = 'msg-bubble';
+    warningBubble.style.cssText = `
+        background: linear-gradient(145deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.05) 100%);
+        border-left: 3px solid rgb(245, 158, 11);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    `;
+    warningBubble.innerHTML = `
+        <div class="msg-role" style="color: rgb(245, 158, 11); display: flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            SYSTEM
+        </div>
+        <div class="msg-text" style="color: rgba(255,255,255,0.9);">
+            <p style="margin-bottom: 12px; font-size: 13px; line-height: 1.5;">Could not detect AI response. The AI might still be thinking. Try clicking <b>SYNC CONTENT</b> or check the AI tab directly.</p>
+            <button id="btnSwitchToAiTab" style="
+                background: rgba(245, 158, 11, 0.2);
+                color: rgb(253, 230, 138);
+                border: 1px solid rgba(245, 158, 11, 0.3);
+                padding: 6px 14px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-family: inherit;
+                font-size: 12px;
+                font-weight: 500;
+                transition: all 0.2s ease;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            ">
+                Switch to AI Tab
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            </button>
+        </div>`;
+    contentArea.appendChild(warningBubble);
+    contentArea.scrollTop = contentArea.scrollHeight;
+
+    document.getElementById('btnSwitchToAiTab')?.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ type: "SWITCH_TO_AI_TAB", url });
     });
 }
 
@@ -391,14 +420,22 @@ function buildMessagesHtml(messages, content) {
     if (Array.isArray(messages) && messages.length) {
         return messages.map(m => {
             const roleClass = (m.role === 'user') ? 'msg-user' : 'msg-assistant';
+            const rawText = (m.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             // Use marked + katex for AI responses, plain text format for user to respect whitespace
             const htmlContent = m.role === 'user'
-                ? m.text ? `<div style="white-space: pre-wrap;">${m.text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>` : ''
+                ? m.text ? `<div style="white-space: pre-wrap;">${rawText}</div>` : ''
                 : renderMarkdown(m.text || '');
+            // Encode raw text for copy button
+            const copyData = btoa(unescape(encodeURIComponent(m.text || '')));
 
             return `
             <div class="msg-bubble ${roleClass}">
+            <div class="msg-header">
             <div class="msg-role">${(m.role || 'unknown').toUpperCase()}</div>
+            <button class="btn-copy-msg" data-copy="${copyData}" title="Copy message">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+            </div>
             <div class="msg-text markdown-body">${htmlContent}</div>
             </div>`;
         }).join('');

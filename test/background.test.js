@@ -250,98 +250,60 @@ test('SWITCH_TO_AI_TAB finds target tab and activates it', () => {
     expect(sendResponse).toHaveBeenCalledWith({ status: "ok" });
 });
 
-// ── RELOAD_AND_EXTRACT ───────────────────────────────────────
+// ── WAIT_AND_EXTRACT ───────────────────────────────────────
 
-test('RELOAD_AND_EXTRACT returns error if no url', () => {
+test('WAIT_AND_EXTRACT returns error if no url', () => {
     const sendResponse = jest.fn();
-    global.chrome.runtime.onMessage._fire({ type: "RELOAD_AND_EXTRACT" }, {}, sendResponse);
+    global.chrome.runtime.onMessage._fire({ type: "WAIT_AND_EXTRACT" }, {}, sendResponse);
     expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ status: "error", msg: "No URL provided." }));
 });
 
-test('RELOAD_AND_EXTRACT returns error if no matching tab', () => {
+test('WAIT_AND_EXTRACT returns error if no matching tab', () => {
     mockTabsQuery.mockImplementation((_, cb) => cb([]));
     const sendResponse = jest.fn();
-    global.chrome.runtime.onMessage._fire({ type: "RELOAD_AND_EXTRACT", url: "https://notfound.com" }, {}, sendResponse);
+    global.chrome.runtime.onMessage._fire({ type: "WAIT_AND_EXTRACT", url: "https://notfound.com" }, {}, sendResponse);
     expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ status: "error", msg: "No matching tab found" }));
 });
 
-test('RELOAD_AND_EXTRACT reloads tab and sets up listener, then extracts on complete', () => {
-    jest.useFakeTimers();
+test('WAIT_AND_EXTRACT forwards request to content script and returns response', () => {
     const targetTab = { id: 45, url: "https://gemini.google.com/app/123" };
     mockTabsQuery.mockImplementation((_, cb) => cb([targetTab]));
-    global.chrome.tabs.reload = jest.fn();
-    let updatedListener = null;
-    global.chrome.tabs.onUpdated = {
-        addListener: jest.fn(fn => { updatedListener = fn; }),
-        removeListener: jest.fn()
-    };
+    mockTabsSendMessage.mockImplementation((tabId, msg, cb) => cb({ status: "success", data: "test" }));
 
     const sendResponse = jest.fn();
-    global.chrome.runtime.onMessage._fire({ type: "RELOAD_AND_EXTRACT", url: "https://gemini.google.com/app/123" }, {}, sendResponse);
+    global.chrome.runtime.onMessage._fire({ type: "WAIT_AND_EXTRACT", url: "https://gemini.google.com/app/123" }, {}, sendResponse);
 
-    expect(global.chrome.tabs.reload).toHaveBeenCalledWith(45);
-    expect(global.chrome.tabs.onUpdated.addListener).toHaveBeenCalled();
-
-    // Trigger onUpdated complete
-    updatedListener(45, { status: "complete" });
-    expect(global.chrome.tabs.onUpdated.removeListener).toHaveBeenCalledWith(updatedListener);
-
-    // Fast-forward timeout
-    mockTabsSendMessage.mockImplementation((tabId, msg, cb) => cb({ status: "success", data: "test" }));
-    jest.advanceTimersByTime(2000);
-
-    expect(mockTabsSendMessage).toHaveBeenCalledWith(45, { type: "EXTRACT_CONTENT" }, expect.any(Function));
+    expect(mockTabsSendMessage).toHaveBeenCalledWith(45, { type: "WAIT_AND_EXTRACT" }, expect.any(Function));
     expect(sendResponse).toHaveBeenCalledWith({ status: "success", data: "test" });
-    jest.useRealTimers();
 });
 
-test('RELOAD_AND_EXTRACT handles lastError during sendMessage', () => {
-    jest.useFakeTimers();
+test('WAIT_AND_EXTRACT handles lastError during sendMessage', () => {
     const targetTab = { id: 45, url: "https://gemini.google.com/app/123" };
     mockTabsQuery.mockImplementation((_, cb) => cb([targetTab]));
-    global.chrome.tabs.reload = jest.fn();
-    let updatedListener = null;
-    global.chrome.tabs.onUpdated = {
-        addListener: jest.fn(fn => { updatedListener = fn; }),
-        removeListener: jest.fn()
-    };
 
     const sendResponse = jest.fn();
-    global.chrome.runtime.onMessage._fire({ type: "RELOAD_AND_EXTRACT", url: "https://gemini.google.com/app/123" }, {}, sendResponse);
-    updatedListener(45, { status: "complete" });
+    global.chrome.runtime.onMessage._fire({ type: "WAIT_AND_EXTRACT", url: "https://gemini.google.com/app/123" }, {}, sendResponse);
 
     // Mock an error
-    mockTabsSendMessage.mockImplementation((tabId, msg, cb) => {
-        global.chrome.runtime.lastError = new Error("Injection failed");
-        cb(null);
-        delete global.chrome.runtime.lastError;
-    });
+    const sendMessageCallback = mockTabsSendMessage.mock.calls[0][2];
+    global.chrome.runtime.lastError = new Error("Injection failed");
+    sendMessageCallback(null);
+    delete global.chrome.runtime.lastError;
 
-    jest.advanceTimersByTime(2000);
     expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ status: "error", msg: "Injection failed" }));
-    jest.useRealTimers();
 });
 
-test('RELOAD_AND_EXTRACT handles empty response during sendMessage', () => {
-    jest.useFakeTimers();
+test('WAIT_AND_EXTRACT handles empty response during sendMessage', () => {
     const targetTab = { id: 45, url: "https://gemini.google.com/app/123" };
     mockTabsQuery.mockImplementation((_, cb) => cb([targetTab]));
-    global.chrome.tabs.reload = jest.fn();
-    let updatedListener = null;
-    global.chrome.tabs.onUpdated = {
-        addListener: jest.fn(fn => { updatedListener = fn; }),
-        removeListener: jest.fn()
-    };
 
     const sendResponse = jest.fn();
-    global.chrome.runtime.onMessage._fire({ type: "RELOAD_AND_EXTRACT", url: "https://gemini.google.com/app/123" }, {}, sendResponse);
-    updatedListener(45, { status: "complete" });
+    global.chrome.runtime.onMessage._fire({ type: "WAIT_AND_EXTRACT", url: "https://gemini.google.com/app/123" }, {}, sendResponse);
 
-    mockTabsSendMessage.mockImplementation((tabId, msg, cb) => cb(null)); // null response
+    const sendMessageCallback = mockTabsSendMessage.mock.calls[0][2];
+    sendMessageCallback(null); // null response
 
-    jest.advanceTimersByTime(2000);
     expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ status: "error", msg: "No response from content script." }));
-    jest.useRealTimers();
 });
 
 // ── Action ───────────────────────────────────────────────────

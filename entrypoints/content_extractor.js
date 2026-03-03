@@ -90,6 +90,50 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         })();
         return true;
     }
+
+    if (request.type === "WAIT_AND_EXTRACT") {
+        injectRexowButton();
+        (async () => {
+            try {
+                const adapter = await getAdapter(request.url || window.location.href);
+
+                // Wait for AI response to finish
+                if (typeof adapter.waitForResponse === 'function') {
+                    console.log('[REXOW] WAIT_AND_EXTRACT: waiting for AI response...');
+                    await adapter.waitForResponse();
+                    console.log('[REXOW] WAIT_AND_EXTRACT: AI response detected');
+                } else {
+                    // Fallback: wait a fixed amount of time
+                    await new Promise(r => setTimeout(r, 5000));
+                }
+
+                // Prepare and extract
+                if (typeof adapter.prepareForExtract === 'function') {
+                    adapter.prepareForExtract();
+                    await new Promise(r => setTimeout(r, 500));
+                }
+
+                let result;
+                try {
+                    result = adapter.extract();
+                } catch (err) {
+                    sendResponse({ status: "error", msg: "Extraction failed: " + err.message });
+                    return;
+                }
+
+                if (!Array.isArray(result.messages)) result.messages = [];
+                sendResponse({ status: "success", data: result });
+            } catch (e) {
+                console.error("[REXOW] WAIT_AND_EXTRACT error:", e);
+                sendResponse({
+                    status: "error",
+                    msg: e.message || "Failed to wait and extract.",
+                    detail: "The AI site may have changed."
+                });
+            }
+        })();
+        return true;
+    }
 });
 
 async function getAdapter(url) {
