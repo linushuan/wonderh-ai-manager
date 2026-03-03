@@ -86,78 +86,107 @@ describe('events.js', () => {
         expect(store.getAppData().folders.length).toBe(1);
     });
 
-    test('folderTree click handler on node-content selects item', () => {
+    test('folderTree click on node-content selects item and renders view', () => {
         initEvents();
-        // Render tree first so we have nodes to click
         const renderTree = require('../entrypoints/dashboard/tree.js').renderTree;
         renderTree();
 
-        // Find a node-content element
         const nodeContent = document.querySelector('.node-content[data-type="folder"]');
-        if (nodeContent) {
-            // Simulate click by triggering the folderTree click handler
-            const event = new MouseEvent('click', { bubbles: true });
-            Object.defineProperty(event, 'target', { value: nodeContent, configurable: true });
-            nodeContent.click();
-        }
+        expect(nodeContent).not.toBeNull();
+        nodeContent.click();
+
+        // After clicking, contentView should be visible with folder info
+        const contentView = document.getElementById('contentView');
+        expect(contentView.style.display).toBe('flex');
+        expect(contentView.innerHTML).toContain('Test Folder');
     });
 
-    test('chevron toggle works in tree clicks', () => {
+    test('chevron toggle expands and collapses folder', () => {
         initEvents();
         const renderTree = require('../entrypoints/dashboard/tree.js').renderTree;
         renderTree();
 
         const chevron = document.querySelector('.btn-chevron:not(.invisible)');
-        if (chevron) {
-            chevron.click();
-            // After click, expanded state should toggle
-        }
+        expect(chevron).not.toBeNull();
+
+        const id = chevron.dataset.id;
+        const expanded = store.getExpandedFolders();
+        const wasExpanded = expanded.has(id);
+        chevron.click();
+        // After clicking, expanded state should have toggled
+        expect(store.getExpandedFolders().has(id)).toBe(!wasExpanded);
     });
 
-    test('action button clicks are handled', () => {
+    test('edit button renames item when confirmed', () => {
         initEvents();
         const renderTree = require('../entrypoints/dashboard/tree.js').renderTree;
         renderTree();
 
-        // Test edit button
         const editBtn = document.querySelector('.btn-edit');
-        if (editBtn) {
-            global.prompt = jest.fn(() => 'Renamed');
-            editBtn.click();
-        }
+        expect(editBtn).not.toBeNull();
+
+        const id = editBtn.dataset.id;
+        global.prompt = jest.fn(() => 'Renamed Item');
+        editBtn.click();
+
+        expect(global.prompt).toHaveBeenCalledWith('Rename to:', expect.any(String));
+        // Find the renamed item
+        const allItems = [...store.getAppData().folders, ...store.getAppData().chats];
+        const item = allItems.find(x => x.id === id);
+        expect(item.name).toBe('Renamed Item');
     });
 
-    test('delete button prompts for confirmation', () => {
+    test('delete button prompts confirmation and deletes when confirmed', () => {
         initEvents();
         const renderTree = require('../entrypoints/dashboard/tree.js').renderTree;
         renderTree();
 
         const deleteBtn = document.querySelector('.btn-delete');
-        if (deleteBtn) {
-            global.confirm = jest.fn(() => false);
-            deleteBtn.click();
-            expect(global.confirm).toHaveBeenCalled();
-        }
+        expect(deleteBtn).not.toBeNull();
+
+        // First: cancel deletion
+        global.confirm = jest.fn(() => false);
+        const id = deleteBtn.dataset.id;
+        deleteBtn.click();
+        expect(global.confirm).toHaveBeenCalledWith('Delete permanently?');
+
+        // Item should still exist
+        const allItems = [...store.getAppData().folders, ...store.getAppData().chats];
+        expect(allItems.find(x => x.id === id)).toBeTruthy();
     });
 
-    test('select chat and interact with URL bar', () => {
+    test('select chat populates URL and renders messages', () => {
         initEvents();
 
-        // Select the chat
         const view = require('../entrypoints/dashboard/view.js');
         view.selectItem('c1', 'chat');
 
-        // Check URL input is populated
         const urlInput = document.getElementById('urlInput');
-        if (urlInput) {
-            expect(urlInput.value).toBe('https://gemini.google.com/test');
-        }
+        expect(urlInput).not.toBeNull();
+        expect(urlInput.value).toBe('https://gemini.google.com/test');
 
-        // Test SYNC CONTENT button
+        // Check messages rendered
+        const contentArea = document.getElementById('chatContentArea');
+        expect(contentArea).not.toBeNull();
+        expect(contentArea.querySelectorAll('.msg-bubble').length).toBe(2);
+    });
+
+    test('sync button sends TRIGGER_EXTRACT message', () => {
+        initEvents();
+        const view = require('../entrypoints/dashboard/view.js');
+        view.selectItem('c1', 'chat');
+
         const syncBtn = document.getElementById('btnFetchContent');
-        if (syncBtn) {
-            syncBtn.click();
-        }
+        expect(syncBtn).not.toBeNull();
+
+        const spy = jest.spyOn(chrome.runtime, 'sendMessage');
+        syncBtn.click();
+
+        expect(spy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'TRIGGER_EXTRACT', url: 'https://gemini.google.com/test' }),
+            expect.any(Function)
+        );
+        spy.mockRestore();
     });
 
     test('send message textarea and button', () => {
@@ -169,15 +198,15 @@ describe('events.js', () => {
         const sendBtn = document.getElementById('btnSendMessage');
         const spy = jest.spyOn(chrome.runtime, 'sendMessage');
 
-        if (sendInput && sendBtn) {
-            expect(sendInput.tagName).toBe('TEXTAREA');
-            sendInput.value = 'test textarea message';
-            sendBtn.click();
-            expect(spy).toHaveBeenCalledWith(expect.objectContaining({
-                type: 'SEND_ONLY',
-                text: 'test textarea message'
-            }), expect.any(Function));
-        }
+        expect(sendInput).not.toBeNull();
+        expect(sendBtn).not.toBeNull();
+        expect(sendInput.tagName).toBe('TEXTAREA');
+        sendInput.value = 'test textarea message';
+        sendBtn.click();
+        expect(spy).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'SEND_ONLY',
+            text: 'test textarea message'
+        }), expect.any(Function));
         spy.mockRestore();
     });
 
@@ -196,48 +225,86 @@ describe('events.js', () => {
         const copyBtns = document.querySelectorAll('.btn-copy-msg');
         expect(copyBtns.length).toBeGreaterThan(0);
 
-        // Setup raw text we expect to be copied (from store mocks above, chat 1 has "hi" and "hello")
         copyBtns[0].click();
 
-        // We decode the base64 in events.js to copy it. Let's see if writeText was called.
-        // Wait for next tick since writeText is async
         await Promise.resolve();
 
         expect(navigator.clipboard.writeText).toHaveBeenCalledWith('hi');
     });
 
-    test('URL change triggers save', () => {
+    test('URL input change triggers updateChat via input event', () => {
         initEvents();
         const view = require('../entrypoints/dashboard/view.js');
         view.selectItem('c1', 'chat');
 
         const urlInput = document.getElementById('urlInput');
-        if (urlInput) {
-            urlInput.value = 'https://new-url.com';
-            urlInput.dispatchEvent(new Event('change'));
-        }
+        expect(urlInput).not.toBeNull();
+
+        urlInput.value = 'https://new-url.com';
+        urlInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+        // Verify the chat URL was updated in store
+        const chat = store.getAppData().chats.find(c => c.id === 'c1');
+        expect(chat.url).toBe('https://new-url.com');
     });
 
-    test('notes textarea change triggers save', () => {
+    test('chatNotes input triggers updateChat', () => {
         initEvents();
         const view = require('../entrypoints/dashboard/view.js');
         view.selectItem('c1', 'chat');
 
         const notesEl = document.getElementById('chatNotes');
-        if (notesEl) {
-            notesEl.value = 'New notes';
-            notesEl.dispatchEvent(new Event('input'));
-        }
+        expect(notesEl).not.toBeNull();
+
+        notesEl.value = 'Updated notes';
+        notesEl.dispatchEvent(new Event('input', { bubbles: true }));
+
+        const chat = store.getAppData().chats.find(c => c.id === 'c1');
+        expect(chat.notes).toBe('Updated notes');
     });
 
-    test('toggle right panel button', () => {
+    test('toggle right panel button toggles class', () => {
         initEvents();
         const view = require('../entrypoints/dashboard/view.js');
         view.selectItem('c1', 'chat');
 
         const toggleBtn = document.getElementById('toggleRightPanel');
-        if (toggleBtn) {
-            toggleBtn.click();
-        }
+        expect(toggleBtn).not.toBeNull();
+
+        const appShell = document.getElementById('appShell');
+        const wasOpen = appShell.classList.contains('right-open');
+        toggleBtn.click();
+        expect(appShell.classList.contains('right-open')).toBe(!wasOpen);
+    });
+
+    test('Enter key in textarea sends message, Shift+Enter does not', () => {
+        initEvents();
+        const view = require('../entrypoints/dashboard/view.js');
+        view.selectItem('c1', 'chat');
+
+        const sendInput = document.getElementById('sendMessageInput');
+        expect(sendInput).not.toBeNull();
+        sendInput.value = 'enter test';
+
+        const spy = jest.spyOn(chrome.runtime, 'sendMessage');
+
+        // Shift+Enter should NOT send
+        sendInput.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Enter', shiftKey: true, bubbles: true
+        }));
+        expect(spy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'SEND_ONLY' }),
+            expect.any(Function)
+        );
+
+        // Enter alone should send
+        sendInput.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Enter', shiftKey: false, bubbles: true
+        }));
+        expect(spy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'SEND_ONLY', text: 'enter test' }),
+            expect.any(Function)
+        );
+        spy.mockRestore();
     });
 });

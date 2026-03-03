@@ -323,8 +323,8 @@ function handleSendMessage() {
             }
             renderTree();
 
-            // Step 5: Let user switch back to REXOW
-            if (contentArea) {
+            // Step 5: Let user switch back to REXOW (only if page is hidden, i.e. user is on AI tab)
+            if (contentArea && document.visibilityState === 'hidden') {
                 const switchBubble = document.createElement('div');
                 switchBubble.className = 'msg-bubble';
                 switchBubble.style.cssText = `

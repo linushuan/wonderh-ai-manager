@@ -220,4 +220,26 @@ describe('content_extractor', () => {
         expect(result).toBeUndefined();
         expect(sendResponse).not.toHaveBeenCalled();
     });
+
+    test('REXOW_CLOSED removes the floating button', () => {
+        // Button should exist from beforeEach
+        expect(document.getElementById('rexow-float-btn')).not.toBeNull();
+
+        const sendResponse = jest.fn();
+        messageHandler({ type: 'REXOW_CLOSED' }, {}, sendResponse);
+
+        expect(document.getElementById('rexow-float-btn')).toBeNull();
+    });
+
+    test('REXOW_CLOSED does nothing if button already removed', () => {
+        // Remove button first
+        const btn = document.getElementById('rexow-float-btn');
+        if (btn) btn.remove();
+        expect(document.getElementById('rexow-float-btn')).toBeNull();
+
+        // Should not throw
+        expect(() => {
+            messageHandler({ type: 'REXOW_CLOSED' }, {}, jest.fn());
+        }).not.toThrow();
+    });
 });

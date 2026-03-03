@@ -580,6 +580,7 @@ export default class GeminiAdapter {
             let settled = false;
             let settleTimer = null;
             let mutationSeen = false;
+            let sendButtonReady = false;
             const SETTLE_DELAY = 2000; // 2s of DOM silence = response done
 
             const target =
@@ -590,6 +591,8 @@ export default class GeminiAdapter {
 
             const observer = new MutationObserver(() => {
                 mutationSeen = true;
+                // Don't reset timer if send button already detected — response is done
+                if (sendButtonReady) return;
                 // Reset settle timer on every mutation
                 if (settleTimer) clearTimeout(settleTimer);
                 // Start settle countdown — resolves if no more mutations for SETTLE_DELAY
@@ -618,9 +621,10 @@ export default class GeminiAdapter {
                 const sendBtn = document.querySelector('.send-button:not([disabled])') ||
                     document.querySelector('button[aria-label*="Send"]:not([disabled])');
                 if (sendBtn && mutationSeen) {
-                    // Send button is enabled again → response likely complete
-                    if (settleTimer) clearTimeout(settleTimer);
-                    settleTimer = setTimeout(() => finish(), 500);
+                    // Send button is enabled again → response is definitively complete
+                    console.log('[REXOW] waitForResponse: send button re-enabled, finishing');
+                    sendButtonReady = true;
+                    finish();
                 }
             }, 1000);
 

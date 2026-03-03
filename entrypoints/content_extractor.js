@@ -134,6 +134,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         })();
         return true;
     }
+
+    if (request.type === "REXOW_CLOSED") {
+        const btn = document.getElementById('rexow-float-btn');
+        if (btn) {
+            btn.remove();
+            console.log('[REXOW] Dashboard closed — removed float button');
+        }
+    }
 });
 
 async function getAdapter(url) {

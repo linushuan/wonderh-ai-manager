@@ -77,6 +77,21 @@ chrome.runtime.onConnect.addListener((port) => {
     port.onDisconnect.addListener(() => {
         void chrome.runtime.lastError;
         dashboardPorts.delete(port);
+        // When all dashboard pages are closed, notify AI tabs to remove the float button
+        if (dashboardPorts.size === 0) {
+            chrome.tabs.query({}, (tabs) => {
+                void chrome.runtime.lastError;
+                for (const tab of tabs) {
+                    if (tab.id) {
+                        try {
+                            chrome.tabs.sendMessage(tab.id, { type: "REXOW_CLOSED" }, () => {
+                                void chrome.runtime.lastError; // suppress errors for non-content-script tabs
+                            });
+                        } catch (_) { /* ignore */ }
+                    }
+                }
+            });
+        }
     });
 });
 

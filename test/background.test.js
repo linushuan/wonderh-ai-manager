@@ -306,6 +306,37 @@ test('WAIT_AND_EXTRACT handles empty response during sendMessage', () => {
     expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ status: "error", msg: "No response from content script." }));
 });
 
+// ── Dashboard port disconnect → REXOW_CLOSED broadcast ──────
+
+test('broadcasts REXOW_CLOSED to all tabs when last dashboard port disconnects', () => {
+    let disconnectListener;
+    const mockPort = {
+        name: "dashboard",
+        onMessage: { addListener: jest.fn() },
+        onDisconnect: { addListener: jest.fn(fn => disconnectListener = fn) },
+        postMessage: jest.fn()
+    };
+
+    const connectListener = global.chrome.runtime.onConnect.addListener.mock.calls[0][0];
+    connectListener(mockPort);
+
+    // Set up tabs.query and tabs.sendMessage mocks
+    global.chrome.tabs.update = jest.fn();
+    mockTabsQuery.mockImplementation((_, cb) => cb([
+        { id: 1, url: "https://gemini.google.com/app/123" },
+        { id: 2, url: "https://chatgpt.com/c/456" }
+    ]));
+    mockTabsSendMessage.mockImplementation((tabId, msg, cb) => { if (cb) cb(); });
+
+    // Simulate port disconnect
+    disconnectListener();
+
+    // Should have queried all tabs and sent REXOW_CLOSED to each
+    expect(mockTabsQuery).toHaveBeenCalled();
+    expect(mockTabsSendMessage).toHaveBeenCalledWith(1, { type: "REXOW_CLOSED" }, expect.any(Function));
+    expect(mockTabsSendMessage).toHaveBeenCalledWith(2, { type: "REXOW_CLOSED" }, expect.any(Function));
+});
+
 // ── Action ───────────────────────────────────────────────────
 
 test('action.onClicked creates dashboard tab', () => {
