@@ -22,3 +22,6 @@ tmp-voyager/
 
 # User data (never commit personal conversation data)
 ~/wonderh_ai_data.json
+
+# Developer docs
+struct.md

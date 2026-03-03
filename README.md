@@ -97,16 +97,3 @@ wonderh-ai-manager/
     └── wonderh_host.py
 ```
 
-## Development
-
-```bash
-npm install
-npm test          # run all tests with coverage
-npx jest          # quick test run
-```
-
-Tests use **Jest** + **jsdom**. See [`struct.md`](struct.md) for function signatures, error handling, and test patterns.
-
-## License
-
-MIT
