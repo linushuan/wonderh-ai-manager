@@ -9,6 +9,7 @@ import {
 import { selectItem, showWelcome, updateSummaryDisplay, renderMainView } from './view.js';
 import { renderTree } from './tree.js';
 import { generateSummary, getApiKey } from './api.js';
+import { renderMarkdown } from './markdown.js';
 
 export function initEvents() {
 
@@ -288,7 +289,7 @@ function handleSendMessage() {
         }
     }, 60000);
 
-    // SEND_MESSAGE now waits for AI response + extracts content before returning
+    // SEND_MESSAGE waits for AI response + extracts content directly
     chrome.runtime.sendMessage({ type: "SEND_MESSAGE", url, text }, (res) => {
         clearTimeout(timeoutWarning);
         void chrome.runtime.lastError;
@@ -301,7 +302,6 @@ function handleSendMessage() {
             return;
         }
 
-        // If the response includes extracted data, update the UI directly
         if (res.data) {
             const { content, platform, messages = [] } = res.data;
             updateChat(id, { content: content || "", platform: platform || null, messages });
@@ -328,15 +328,20 @@ function buildMessagesHtml(messages, content) {
     if (Array.isArray(messages) && messages.length) {
         return messages.map(m => {
             const roleClass = (m.role === 'user') ? 'msg-user' : 'msg-assistant';
+            // Use marked + katex for AI responses, plain text format for user to respect whitespace
+            const htmlContent = m.role === 'user'
+                ? m.text ? `<div style="white-space: pre-wrap;">${m.text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>` : ''
+                : renderMarkdown(m.text || '');
+
             return `
             <div class="msg-bubble ${roleClass}">
             <div class="msg-role">${(m.role || 'unknown').toUpperCase()}</div>
-            <div class="msg-text">${m.text || ''}</div>
+            <div class="msg-text markdown-body">${htmlContent}</div>
             </div>`;
         }).join('');
     }
     if (content && content.trim()) {
-        return `<div class="content-raw">${content}</div>`;
+        return `<div class="content-raw markdown-body">${renderMarkdown(content)}</div>`;
     }
     return '<p style="color:var(--text-muted); text-align:center; padding:40px;">No messages found.</p>';
 }

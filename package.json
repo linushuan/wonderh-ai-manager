@@ -33,5 +33,10 @@
       "entrypoints/**/*.js",
       "!entrypoints/dashboard.html"
     ]
+  },
+  "dependencies": {
+    "katex": "^0.16.33",
+    "marked": "^17.0.3",
+    "marked-katex-extension": "^5.1.7"
   }
 }

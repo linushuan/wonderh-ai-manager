@@ -1,0 +1,255 @@
+/* sidebar.css — Sidebar, Tree, Node Content, Chevrons */
+
+/* --- Sidebar --- */
+.sidebar {
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    white-space: nowrap;
+}
+
+.sidebar-header {
+    height: 60px;
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+}
+
+.brand-text {
+    font-weight: 800;
+    font-size: 20px;
+    letter-spacing: 1px;
+    color: #fff;
+    cursor: pointer;
+}
+
+.header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+/* + 按鈕 — 紫色 */
+.btn-circle-add {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: transparent;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.btn-circle-add:hover {
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.btn-circle-add:active {
+    background: #B15BFF;
+}
+
+.btn-icon-toggle {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    transition: 0.2s;
+}
+
+.btn-icon-toggle:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.btn-icon-toggle:active {
+    background: rgba(255, 255, 255, 0.1);
+    transform: scale(0.95);
+}
+
+.floating-expand-btn {
+    position: absolute;
+    left: 16px;
+    top: 16px;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border);
+    color: #fff;
+    padding: 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    backdrop-filter: blur(5px);
+}
+
+/* --- Tree --- */
+.folder-tree {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 0;
+}
+
+.folder-tree ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    padding-left: 24px;
+}
+
+.tree-node {
+    position: relative;
+}
+
+.tree-node::before {
+    content: "";
+    position: absolute;
+    left: -14px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--tree-line);
+}
+
+.tree-node:last-child::before {
+    height: 12px;
+    bottom: auto;
+}
+
+.tree-node::after {
+    content: "";
+    position: absolute;
+    left: -14px;
+    top: 12px;
+    width: 14px;
+    height: 14px;
+    background: transparent;
+    border-bottom: 2px solid var(--tree-line);
+    border-left: 2px solid var(--tree-line);
+    border-bottom-left-radius: 12px;
+}
+
+#folderTree>ul>.tree-node::before,
+#folderTree>ul>.tree-node::after {
+    display: none;
+}
+
+#folderTree>ul {
+    padding-left: 10px;
+}
+
+.node-content {
+    display: flex;
+    align-items: center;
+    height: var(--row-height);
+    padding: 0 10px;
+    margin: 0 8px 0 0;
+    border-radius: 0 8px 8px 0;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 500;
+    transition: 0.1s;
+    position: relative;
+    z-index: 1;
+}
+
+.node-content:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: #fff;
+}
+
+.node-content.active {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    border-left: 3px solid var(--active-color);
+}
+
+.node-content.active .node-icon {
+    filter: drop-shadow(0 0 6px var(--active-color));
+}
+
+.node-icon {
+    width: 22px;
+    height: 22px;
+    margin-right: 10px;
+    stroke-width: 2px;
+    flex-shrink: 0;
+}
+
+.node-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.node-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.node-content:hover .node-actions {
+    opacity: 1;
+}
+
+.action-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+}
+
+.action-btn:hover {
+    background: var(--accent-hover);
+    color: var(--accent);
+}
+
+/* Chevron buttons */
+.btn-chevron {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    transition: color 0.15s;
+}
+
+.btn-chevron svg {
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: rotate(0deg);
+}
+
+.btn-chevron.expanded svg {
+    transform: rotate(90deg);
+}
+
+.btn-chevron:hover {
+    color: #fff;
+}
+
+.btn-chevron.invisible {
+    visibility: hidden;
+    pointer-events: none;
+}

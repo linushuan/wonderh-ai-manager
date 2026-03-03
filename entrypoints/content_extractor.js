@@ -55,11 +55,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     await adapter.waitForResponse();
                     console.log('[REXOW] AI response detected, extracting...');
                 } else {
-                    // Fallback: simple delay for adapters without waitForResponse
                     await new Promise(r => setTimeout(r, 5000));
                 }
 
-                // 3. Scroll to bottom to ensure latest content is rendered
+                // 3. Scroll to bottom and extract
                 if (typeof adapter.prepareForExtract === 'function') {
                     adapter.prepareForExtract();
                     await new Promise(r => setTimeout(r, 500));
@@ -70,13 +69,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 try {
                     result = adapter.extract();
                 } catch (err) {
-                    // Extraction failed but message was sent
                     sendResponse({ status: "success", sent: true, data: null });
                     return;
                 }
 
                 if (!Array.isArray(result.messages)) result.messages = [];
-
                 sendResponse({ status: "success", sent: true, data: result });
             } catch (e) {
                 console.error("[REXOW] Send message error:", e);

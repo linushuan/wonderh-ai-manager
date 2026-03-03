@@ -1,11 +1,24 @@
-# Local Data
-*.json_bak
-~/wonderh_ai_data.json
-struct.md
+# Dependencies
+node_modules/
 
-# Linux/System
+# Coverage
+coverage/
+
+# Build artifacts
+*.json_bak
+
+# System
 .DS_Store
 __pycache__/
 *.log
-node_modules
-coverage/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary reference
+tmp-voyager/
+
+# User data (never commit personal conversation data)
+~/wonderh_ai_data.json

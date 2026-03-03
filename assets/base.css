@@ -1,0 +1,56 @@
+/* base.css — Variables, Reset, Body, Layout */
+
+:root {
+    --bg-app: #050505;
+    --bg-sidebar: #0f0f11;
+    --bg-panel: rgba(20, 20, 23, 0.6);
+    --border: #27272a;
+
+    /* + 按鈕改紫色 */
+    --accent: #BE77FF;
+    --accent-glow: rgba(190, 119, 255, 0.25);
+    --accent-hover: rgba(190, 119, 255, 0.12);
+
+    --text-main: #e4e4e7;
+    --text-muted: #a1a1aa;
+    --tree-line: #3f3f46;
+    --sidebar-width: 300px;
+    --right-panel-width: 380px;
+    --row-height: 40px;
+    --active-color: #ec4899;
+}
+
+* {
+    box-sizing: border-box;
+    outline: none;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: var(--bg-app);
+    color: var(--text-main);
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* --- Layout --- */
+.app-shell {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 1fr 0px;
+    height: 100%;
+    transition: grid-template-columns 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.app-shell.right-open {
+    grid-template-columns: var(--sidebar-width) 1fr var(--right-panel-width);
+}
+
+.app-shell.left-collapsed {
+    grid-template-columns: 0px 1fr 0px;
+}
+
+.app-shell.left-collapsed.right-open {
+    grid-template-columns: 0px 1fr var(--right-panel-width);
+}

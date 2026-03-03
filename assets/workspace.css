@@ -1,0 +1,167 @@
+/* workspace.css — Welcome Screen, Content View, Folder Dashboard */
+
+.workspace {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.welcome-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #000;
+    background-image:
+        radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(236, 72, 153, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 50% 50%, rgba(168, 85, 247, 0.1) 0%, transparent 60%);
+    background-size: 150% 150%;
+    animation: nebula 20s ease infinite alternate;
+    z-index: 0;
+}
+
+@keyframes nebula {
+    0% {
+        background-position: 0% 0%;
+    }
+
+    100% {
+        background-position: 100% 100%;
+    }
+}
+
+.welcome-container.has-bg {
+    background-image: none !important;
+}
+
+.welcome-content {
+    text-align: center;
+    z-index: 1;
+}
+
+.welcome-logo {
+    width: 100px;
+    margin-bottom: 20px;
+    filter: drop-shadow(0 0 20px rgba(236, 72, 153, 0.3));
+}
+
+.welcome-content h1 {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+}
+
+/* Content View */
+.content-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.content-view .folder-dashboard {
+    padding: 30px;
+}
+
+.folder-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+    margin-bottom: 20px;
+    flex-shrink: 0;
+}
+
+.folder-dashboard .panel-section:first-of-type {
+    flex: 2;
+    min-height: 100px;
+    margin-bottom: 48px;
+}
+
+.folder-header h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 700;
+}
+
+.folder-header .node-icon {
+    width: 32px;
+    height: 32px;
+}
+
+.folder-dashboard .panel-section {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.folder-dashboard .panel-section:first-of-type textarea {
+    flex: 1;
+    min-height: 0;
+}
+
+.folder-dashboard .panel-section:last-of-type {
+    flex: 8;
+    min-height: 0;
+}
+
+/* Folder Grid */
+.folder-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 14px;
+    padding-top: 10px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    align-content: start;
+}
+
+.grid-item {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: 0.2s;
+    min-height: 56px;
+}
+
+.grid-item:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.grid-item:active {
+    transform: scale(0.97);
+}
+
+.grid-item svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+.grid-item span {
+    font-size: 13px;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+.grid-item:first-child {
+    border-top: 1px solid var(--border);
+}

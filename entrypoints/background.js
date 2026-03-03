@@ -156,14 +156,43 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     } else if (req.type === "SWITCH_TO_AI_TAB") {
         if (!req.url) return true;
         chrome.tabs.query({}, (tabs) => {
-            void chrome.runtime.lastError;
-            const target = tabs.find(t => t.url && t.url.startsWith(req.url));
-            if (target) {
-                chrome.tabs.update(target.id, { active: true });
-                if (target.windowId) chrome.windows.update(target.windowId, { focused: true });
-            }
         });
         sendResponse({ status: "ok" });
+        return true;
+    } else if (req.type === "RELOAD_AND_EXTRACT") {
+        if (!req.url) {
+            sendResponse({ status: "error", msg: "No URL provided." });
+            return true;
+        }
+        chrome.tabs.query({}, (tabs) => {
+            void chrome.runtime.lastError;
+            const target = tabs.find(t => t.url && t.url.startsWith(req.url));
+            if (!target) {
+                sendResponse({ status: "error", msg: "No matching tab found", detail: `Open "${req.url}" in a tab first.` });
+                return;
+            }
+
+            // 1. Reload the tab
+            chrome.tabs.reload(target.id);
+
+            // 2. Wait for it to finish loading, then extract
+            const onUpdated = (tabId, changeInfo) => {
+                if (tabId === target.id && changeInfo.status === 'complete') {
+                    chrome.tabs.onUpdated.removeListener(onUpdated);
+
+                    // Give the page a moment to initialize its scripts
+                    setTimeout(() => {
+                        chrome.tabs.sendMessage(target.id, { type: "EXTRACT_CONTENT" }, (res) => {
+                            const err = chrome.runtime.lastError;
+                            if (err) { sendResponse({ status: "error", msg: err.message, detail: "Try refreshing the AI tab again." }); return; }
+                            if (!res) { sendResponse({ status: "error", msg: "No response from content script." }); return; }
+                            sendResponse(res);
+                        });
+                    }, 2000);
+                }
+            };
+            chrome.tabs.onUpdated.addListener(onUpdated);
+        });
         return true;
     }
 });

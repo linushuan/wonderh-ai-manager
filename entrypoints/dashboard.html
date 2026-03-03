@@ -1,11 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>REXOW AI Manager</title>
+    <!-- KaTeX CSS for rendering LaTeX equations (local) -->
+    <link rel="stylesheet" href="../assets/lib/katex.min.css">
     <link rel="stylesheet" href="../assets/dashboard.css">
 </head>
+
 <body>
     <div class="app-shell" id="appShell">
 
@@ -60,10 +64,20 @@
     </div>
 
     <!--
+        Load libraries for Markdown + LaTeX rendering (local bundles).
+        These must load BEFORE main.js so that global objects (marked, markedKatex)
+        are available when markdown.js initializes.
+    -->
+    <script src="../assets/lib/marked.min.js"></script>
+    <script src="../assets/lib/katex.min.js"></script>
+    <script src="../assets/lib/marked-katex-extension.umd.js"></script>
+
+    <!--
         Load modules in dependency order.
         type="module" gives each file its own scope and enables ES import/export.
         main.js is the entry point — it calls initEvents() and loadData().
     -->
     <script type="module" src="dashboard/main.js"></script>
 </body>
+
 </html>
