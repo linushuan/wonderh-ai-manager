@@ -4,22 +4,26 @@
  */
 console.log("[REXOW] Content Extractor Loaded");
 
+// Inject a floating "Back to REXOW" button for easy navigation
+function injectRexowButton() {
+    if (document.getElementById('rexow-float-btn')) return;
+    const btn = document.createElement('button');
+    btn.id = 'rexow-float-btn';
+    btn.innerText = 'Back to REXOW';
+    Object.assign(btn.style, {
+        position: 'fixed', bottom: '20px', right: '20px', zIndex: 999999,
+        backgroundColor: '#4f46e5', color: '#fff', border: 'none',
+        borderRadius: '8px', padding: '10px 16px', cursor: 'pointer',
+        fontWeight: 'bold', fontFamily: 'sans-serif', boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+    });
+    btn.onclick = () => chrome.runtime.sendMessage({ type: "SWITCH_TO_REXOW" });
+    document.body.appendChild(btn);
+}
+
+// Ensure the button is present when the page first loads
+injectRexowButton();
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    // Inject a floating "Back to REXOW" button for easy navigation
-    function injectRexowButton() {
-        if (document.getElementById('rexow-float-btn')) return;
-        const btn = document.createElement('button');
-        btn.id = 'rexow-float-btn';
-        btn.innerText = 'Back to REXOW';
-        Object.assign(btn.style, {
-            position: 'fixed', bottom: '20px', right: '20px', zIndex: 999999,
-            backgroundColor: '#4f46e5', color: '#fff', border: 'none',
-            borderRadius: '8px', padding: '10px 16px', cursor: 'pointer',
-            fontWeight: 'bold', fontFamily: 'sans-serif', boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-        });
-        btn.onclick = () => chrome.runtime.sendMessage({ type: "SWITCH_TO_REXOW" });
-        document.body.appendChild(btn);
-    }
 
     if (request.type === "EXTRACT_CONTENT") {
         injectRexowButton();
