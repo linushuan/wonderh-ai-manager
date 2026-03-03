@@ -77,6 +77,23 @@ export default class GeminiAdapter {
                 }
             }
 
+            // Deduplicate: if the last message is a user message identical to a
+            // previous one (typically happens when sendMessage leaves stale text
+            // in the DOM), remove the trailing duplicate.
+            if (messages.length >= 2) {
+                const last = messages[messages.length - 1];
+                if (last.role === 'user') {
+                    // Look for a previous user message with the same text
+                    for (let i = 0; i < messages.length - 1; i++) {
+                        if (messages[i].role === 'user' && messages[i].text === last.text) {
+                            messages.pop();
+                            fullContent.pop();
+                            break;
+                        }
+                    }
+                }
+            }
+
             if (fullContent.length > 0) {
                 return {
                     title,
@@ -149,28 +166,41 @@ export default class GeminiAdapter {
             inputEl.dispatchEvent(new Event('input', { bubbles: true }));
             inputEl.dispatchEvent(new Event('change', { bubbles: true }));
         } else {
+            // For Quill-based contenteditable
             inputEl.innerHTML = `<p>${text}</p>`;
             inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-            inputEl.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
-        // Submit using ONE method only to avoid duplicate sends
+        // Submit after a brief delay to let Gemini register the input
         setTimeout(() => {
+            // Try multiple selectors for the send button
             const sendBtn =
                 document.querySelector('.send-button') ||
                 document.querySelector('button[aria-label="Send message"]') ||
+                document.querySelector('button[aria-label*="Send"]') ||
+                document.querySelector('button[aria-label*="send"]') ||
                 document.querySelector('button.send-button') ||
                 document.querySelector('[data-test-id="send-button"]');
 
             if (sendBtn && !sendBtn.disabled) {
                 sendBtn.click();
             } else {
+                // Fallback: press Enter
                 inputEl.dispatchEvent(new KeyboardEvent('keydown', {
                     key: 'Enter', code: 'Enter',
                     keyCode: 13, which: 13,
                     bubbles: true, cancelable: true
                 }));
             }
+
+            // Clear the input after submitting to prevent stale text
+            setTimeout(() => {
+                if (inputEl.tagName === 'TEXTAREA') {
+                    inputEl.value = '';
+                } else {
+                    inputEl.innerHTML = '';
+                }
+            }, 300);
         }, 200);
     }
 

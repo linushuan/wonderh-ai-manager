@@ -4,38 +4,41 @@
  * Uses the global `marked` and `markedKatex` objects loaded via
  * <script> tags in dashboard.html (UMD builds).
  *
- * marked v11.2.0 + marked-katex-extension v4.0.5 + katex v0.16.8
+ * marked v11.2.0 + marked-katex-extension v4.0.5 (bundles katex internally)
  */
 
 let _initialized = false;
 
 function ensureInit() {
-    if (_initialized) return;
+    if (_initialized) return true;
 
-    // marked UMD exports: window.marked = { marked, Marked, ... }
-    if (typeof marked === 'undefined') {
-        console.warn("[REXOW] marked library not loaded yet");
-        return;
+    // Access globals via window — ES modules have their own scope
+    const _marked = window.marked;
+    const _markedKatex = window.markedKatex;
+
+    if (!_marked || typeof _marked.parse !== 'function') {
+        console.warn("[REXOW] marked library not loaded");
+        return false;
     }
 
     try {
-        // The UMD build exposes `marked` as a namespace with `marked.marked` being the parse fn.
-        // But also `marked.use(...)` is available at the top level.
-
-        // Configure KaTeX extension if available
-        if (typeof markedKatex !== 'undefined') {
-            marked.use(markedKatex({
-                throwOnError: false,
-                nonStandard: true  // Support \( \) and \[ \] delimiters
+        // Configure KaTeX extension for LaTeX rendering
+        if (typeof _markedKatex === 'function') {
+            _marked.use(_markedKatex({
+                throwOnError: false
+                // v4.0.5 does not have 'nonStandard' option
+                // It supports $...$ (inline) and $$...$$ (block) by default
             }));
+            console.log("[REXOW] Markdown + KaTeX initialized");
         } else {
-            console.warn("[REXOW] markedKatex not loaded");
+            console.warn("[REXOW] markedKatex not loaded, LaTeX won't render");
         }
 
         _initialized = true;
-        console.log("[REXOW] Markdown + KaTeX initialized");
+        return true;
     } catch (e) {
         console.error("[REXOW] Markdown init error:", e);
+        return false;
     }
 }
 
@@ -47,17 +50,16 @@ function ensureInit() {
 export function renderMarkdown(text) {
     if (!text || typeof text !== 'string') return '';
 
-    ensureInit();
+    const ready = ensureInit();
+    const _marked = window.marked;
 
     // If marked didn't load, return escaped text
-    if (typeof marked === 'undefined' || !_initialized) {
+    if (!ready || !_marked || typeof _marked.parse !== 'function') {
         return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
     try {
-        // marked.parse() is the main entry point in v11 UMD
-        const result = marked.parse(text);
-        return result;
+        return _marked.parse(text);
     } catch (e) {
         console.error("[REXOW] Markdown rendering error:", e);
         return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
