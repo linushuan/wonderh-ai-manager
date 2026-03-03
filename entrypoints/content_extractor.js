@@ -27,7 +27,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (request.type === "EXTRACT_CONTENT") {
         injectRexowButton();
-        runAdapter().then(result => {
+        runAdapter(request.url || window.location.href).then(result => {
             sendResponse({ status: "success", data: result });
         }).catch(err => {
             console.error("[REXOW] Extraction error:", err);
@@ -40,7 +40,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         injectRexowButton();
         (async () => {
             try {
-                const adapter = await getAdapter();
+                const adapter = await getAdapter(request.url || window.location.href);
                 if (typeof adapter.sendMessage !== 'function') {
                     sendResponse({ status: "error", msg: "This adapter does not support sending messages." });
                     return;
@@ -92,8 +92,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 });
 
-async function getAdapter() {
-    const url = window.location.href;
+async function getAdapter(url) {
 
     // Route to correct adapter
     let modulePath;
@@ -121,8 +120,8 @@ async function getAdapter() {
     return adapter;
 }
 
-async function runAdapter() {
-    const adapter = await getAdapter();
+async function runAdapter(url) {
+    const adapter = await getAdapter(url);
 
     // Prepare the page for extraction (e.g., scroll to bottom to render latest messages)
     if (typeof adapter.prepareForExtract === 'function') {
