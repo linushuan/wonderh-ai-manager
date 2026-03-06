@@ -34,6 +34,12 @@ function connectNative() {
                 dashboardPorts.forEach(p => {
                     try { p.postMessage(msg); } catch (_) { dashboardPorts.delete(p); }
                 });
+            } else if (res.status === "error") {
+                // Forward native host errors to dashboard ports
+                const errMsg = { type: "LOAD_ERROR", msg: res.msg || "Native host returned an error." };
+                dashboardPorts.forEach(p => {
+                    try { p.postMessage(errMsg); } catch (_) { dashboardPorts.delete(p); }
+                });
             }
         });
 
@@ -56,7 +62,24 @@ connectNative();
 chrome.runtime.onConnect.addListener((port) => {
     if (port.name !== "dashboard") return;
 
+    const wasEmpty = dashboardPorts.size === 0;
     dashboardPorts.add(port);
+
+    // First dashboard became active: notify AI tabs to show float button
+    if (wasEmpty) {
+        chrome.tabs.query({}, (tabs) => {
+            void chrome.runtime.lastError;
+            for (const tab of tabs) {
+                if (tab.id) {
+                    try {
+                        chrome.tabs.sendMessage(tab.id, { type: "REXOW_OPENED" }, () => {
+                            void chrome.runtime.lastError;
+                        });
+                    } catch (_) { /* ignore */ }
+                }
+            }
+        });
+    }
 
     port.onMessage.addListener((req) => {
         if (!nativePort) connectNative();
@@ -222,6 +245,9 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
                 sendResponse(res);
             });
         });
+        return true;
+    } else if (req.type === "IS_REXOW_OPEN") {
+        sendResponse({ status: "ok", open: dashboardPorts.size > 0 });
         return true;
     }
 });

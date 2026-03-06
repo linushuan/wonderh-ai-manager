@@ -7,6 +7,12 @@ import { Icons } from './icons.js';
 import { renderTree } from './tree.js';
 import { renderMarkdown } from './markdown.js';
 
+/** Escape HTML special chars to prevent XSS when interpolating into innerHTML */
+function esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 export function renderMainView(id, type) {
     const container = document.getElementById('contentView');
     const welcome = document.getElementById('welcomeScreen');
@@ -35,21 +41,21 @@ export function renderFolderView(folder) {
 
     let gridHtml = '';
     subFolders.forEach(f => {
-        gridHtml += `<div class="grid-item" data-id="${f.id}" data-type="folder">${Icons.folder(getColor(f.id))}<span>${f.name}</span></div>`;
+        gridHtml += `<div class="grid-item" data-id="${esc(f.id)}" data-type="folder">${Icons.folder(getColor(f.id))}<span>${esc(f.name)}</span></div>`;
     });
     subChats.forEach(c => {
-        gridHtml += `<div class="grid-item" data-id="${c.id}" data-type="chat">${Icons.file(getColor(c.id))}<span>${c.name}</span></div>`;
+        gridHtml += `<div class="grid-item" data-id="${esc(c.id)}" data-type="chat">${Icons.file(getColor(c.id))}<span>${esc(c.name)}</span></div>`;
     });
 
     container.innerHTML = `
     <div class="folder-dashboard">
     <div class="folder-header">
     ${Icons.folder(getColor(folder.id))}
-    <h1>${folder.name}</h1>
+    <h1>${esc(folder.name)}</h1>
     </div>
     <div class="panel-section">
     <label>FOLDER NOTES</label>
-    <textarea id="mainNoteEditor" class="glass-input">${folder.notes || ''}</textarea>
+    <textarea id="mainNoteEditor" class="glass-input">${esc(folder.notes)}</textarea>
     </div>
     <div class="panel-section">
     <label>CONTENTS</label>
@@ -66,7 +72,7 @@ export function renderChatView(chat) {
     container.innerHTML = `
     <div class="chat-wrapper">
     <div class="chat-header-bar">
-    <span id="chatTitleDisplay" style="font-weight:600; font-size:15px;">${chat.name}</span>
+    <span id="chatTitleDisplay" style="font-weight:600; font-size:15px;">${esc(chat.name)}</span>
     <button id="toggleRightPanel" class="btn-toggle-rotate" title="Toggle Notes Panel">
     ${Icons.close}
     </button>
@@ -77,7 +83,7 @@ export function renderChatView(chat) {
     id="urlInput"
     type="url"
     placeholder="Paste AI conversation URL..."
-    value="${chat.url || ''}"
+    value="${esc(chat.url)}"
     />
     <button id="btnOpenUrl" class="btn-open-url" title="Open in new tab">OPEN</button>
     <button id="btnFetchContent" class="btn-xs">SYNC CONTENT</button>
@@ -105,7 +111,7 @@ export function renderChatView(chat) {
     const notesEl = document.getElementById('chatNotes');
     const summaryEl = document.getElementById('summaryDisplay');
     if (notesEl) notesEl.value = chat.notes || '';
-    if (summaryEl) summaryEl.innerHTML = chat.summary || 'No summary generated.';
+    if (summaryEl) summaryEl.innerHTML = chat.summary ? esc(chat.summary) : 'No summary generated.';
 }
 
 function renderMessagesHtml(messages, content) {
@@ -113,10 +119,9 @@ function renderMessagesHtml(messages, content) {
         return messages.map(m => {
             const roleClass = (m.role === 'user') ? 'msg-user' : 'msg-assistant';
             const rawText = (m.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            // Use renderMarkdown for assistant messages, escape user text
-            const htmlContent = m.role === 'user'
-                ? `<div style="white-space: pre-wrap;">${rawText}</div>`
-                : `<div class="markdown-body">${renderMarkdown(m.text || '')}</div>`;
+            // Render both user and assistant messages through renderMarkdown
+            // so that user-typed LaTeX ($...$, $$...$$) and markdown also renders.
+            const htmlContent = renderMarkdown(m.text || '') || `<div style="white-space: pre-wrap;">${rawText}</div>`;
             // Encode raw text for copy button (use base64 to avoid attribute escaping issues)
             const copyData = btoa(unescape(encodeURIComponent(m.text || '')));
             return `
@@ -127,7 +132,7 @@ function renderMessagesHtml(messages, content) {
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
             </button>
             </div>
-            <div class="msg-text">${htmlContent}</div>
+            <div class="msg-text markdown-body">${htmlContent}</div>
             </div>`;
         }).join('');
     }

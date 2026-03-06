@@ -47,6 +47,10 @@ describe('content_extractor', () => {
         document.body.innerHTML = '';
         chrome.runtime.onMessage.addListener.mockClear();
         chrome.runtime.sendMessage.mockClear();
+        chrome.runtime.sendMessage.mockImplementation((msg, cb) => {
+            if (msg?.type === 'IS_REXOW_OPEN') cb?.({ status: 'ok', open: false });
+            else cb?.({ status: 'ok' });
+        });
         // Return a relative path so Jest's dynamic import properly routes to the mocks!
         chrome.runtime.getURL.mockImplementation((path) => `../${path}`);
         mockActiveAdapter = null;
@@ -59,21 +63,34 @@ describe('content_extractor', () => {
         messageHandler = chrome.runtime.onMessage.addListener.mock.calls[0]?.[0];
     });
 
-    test('injects "Back to REXOW" button on load', () => {
+    test('does not inject "Back to REXOW" button on load when dashboard is closed', () => {
         const btn = document.getElementById('rexow-float-btn');
-        expect(btn).not.toBeNull();
-        expect(btn.innerText).toBe('Back to REXOW');
+        expect(btn).toBeNull();
     });
 
     test('does not duplicate button on re-injection', () => {
-        // Button should already exist from beforeEach
+        const listener = chrome.runtime.onMessage.addListener.mock.calls[0]?.[0];
+        listener({ type: 'REXOW_OPENED' }, {}, jest.fn());
+
         const existingBtn = document.getElementById('rexow-float-btn');
         expect(existingBtn).not.toBeNull();
 
         // Try to re-inject
-        require('../entrypoints/content_extractor.js');
+        listener({ type: 'REXOW_OPENED' }, {}, jest.fn());
         const buttons = document.querySelectorAll('#rexow-float-btn');
         expect(buttons.length).toBe(1);
+    });
+
+    test('injects button when REXOW_OPENED is received', () => {
+        const btnBefore = document.getElementById('rexow-float-btn');
+        expect(btnBefore).toBeNull();
+
+        const sendResponse = jest.fn();
+        messageHandler({ type: 'REXOW_OPENED' }, {}, sendResponse);
+
+        const btnAfter = document.getElementById('rexow-float-btn');
+        expect(btnAfter).not.toBeNull();
+        expect(btnAfter.innerText).toBe('Back to REXOW');
     });
 
     test('EXTRACT_CONTENT returns true for async', () => {
@@ -126,6 +143,38 @@ describe('content_extractor', () => {
         await new Promise(r => setTimeout(r, 100));
 
         expect(mockSendMessage).toHaveBeenCalledWith("Hello");
+        expect(sendResponse).toHaveBeenCalledWith({ status: "success", sent: true });
+    });
+
+    test('SEND_ONLY routes correctly on ChatGPT URL', async () => {
+        const mockSendMessage = jest.fn();
+        mockActiveAdapter = {
+            name: "ChatGPT",
+            sendMessage: mockSendMessage
+        };
+
+        const sendResponse = jest.fn();
+        messageHandler({ type: 'SEND_ONLY', text: "Hi ChatGPT", url: 'https://chatgpt.com/c/abc' }, {}, sendResponse);
+
+        await new Promise(r => setTimeout(r, 100));
+
+        expect(mockSendMessage).toHaveBeenCalledWith("Hi ChatGPT");
+        expect(sendResponse).toHaveBeenCalledWith({ status: "success", sent: true });
+    });
+
+    test('SEND_ONLY routes correctly on Claude URL', async () => {
+        const mockSendMessage = jest.fn();
+        mockActiveAdapter = {
+            name: "Claude",
+            sendMessage: mockSendMessage
+        };
+
+        const sendResponse = jest.fn();
+        messageHandler({ type: 'SEND_ONLY', text: "Hi Claude", url: 'https://claude.ai/chat/abc' }, {}, sendResponse);
+
+        await new Promise(r => setTimeout(r, 100));
+
+        expect(mockSendMessage).toHaveBeenCalledWith("Hi Claude");
         expect(sendResponse).toHaveBeenCalledWith({ status: "success", sent: true });
     });
 
@@ -222,7 +271,7 @@ describe('content_extractor', () => {
     });
 
     test('REXOW_CLOSED removes the floating button', () => {
-        // Button should exist from beforeEach
+        messageHandler({ type: 'REXOW_OPENED' }, {}, jest.fn());
         expect(document.getElementById('rexow-float-btn')).not.toBeNull();
 
         const sendResponse = jest.fn();

@@ -307,4 +307,91 @@ describe('events.js', () => {
         );
         spy.mockRestore();
     });
+
+    test('does not show "Switch back to REXOW" button after send flow (removed feature)', () => {
+        initEvents();
+        const view = require('../entrypoints/dashboard/view.js');
+        view.selectItem('c1', 'chat');
+
+        Object.defineProperty(document, 'visibilityState', {
+            value: 'hidden',
+            configurable: true
+        });
+
+        chrome.runtime.sendMessage.mockImplementation((msg, cb) => {
+            if (msg.type === 'SEND_ONLY') {
+                cb?.({ status: 'success', sent: true });
+                return;
+            }
+            if (msg.type === 'WAIT_AND_EXTRACT') {
+                cb?.({
+                    status: 'success',
+                    data: {
+                        content: 'assistant response',
+                        platform: 'gemini',
+                        messages: [
+                            { role: 'user', text: 'Q' },
+                            { role: 'assistant', text: 'A' }
+                        ]
+                    }
+                });
+                return;
+            }
+            cb?.({ status: 'success' });
+        });
+
+        const sendInput = document.getElementById('sendMessageInput');
+        const sendBtn = document.getElementById('btnSendMessage');
+        expect(sendInput).not.toBeNull();
+        expect(sendBtn).not.toBeNull();
+
+        sendInput.value = 'test hidden flow';
+        sendBtn.click();
+
+        // "Switch back to REXOW" button was removed — should never appear
+        expect(document.getElementById('btnSwitchToRexow')).toBeNull();
+    });
+
+    test('does not show "Switch back to REXOW" button when document is visible', () => {
+        initEvents();
+        const view = require('../entrypoints/dashboard/view.js');
+        view.selectItem('c1', 'chat');
+
+        Object.defineProperty(document, 'visibilityState', {
+            value: 'visible',
+            configurable: true
+        });
+
+        chrome.runtime.sendMessage.mockImplementation((msg, cb) => {
+            if (msg.type === 'SEND_ONLY') {
+                cb?.({ status: 'success', sent: true });
+                return;
+            }
+            if (msg.type === 'WAIT_AND_EXTRACT') {
+                cb?.({
+                    status: 'success',
+                    data: {
+                        content: 'assistant response',
+                        platform: 'gemini',
+                        messages: [
+                            { role: 'user', text: 'Q' },
+                            { role: 'assistant', text: 'A' }
+                        ]
+                    }
+                });
+                return;
+            }
+            cb?.({ status: 'success' });
+        });
+
+        const sendInput = document.getElementById('sendMessageInput');
+        const sendBtn = document.getElementById('btnSendMessage');
+        expect(sendInput).not.toBeNull();
+        expect(sendBtn).not.toBeNull();
+
+        sendInput.value = 'test visible flow';
+        sendBtn.click();
+
+        expect(document.getElementById('btnSwitchToRexow')).toBeNull();
+    });
 });

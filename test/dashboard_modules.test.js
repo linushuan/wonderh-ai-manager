@@ -121,7 +121,7 @@ describe('icons.js', () => {
 // ── Markdown ──────────────────────────────────────────────────
 
 describe('markdown.js', () => {
-    let renderMarkdown;
+    let renderMarkdown, extractMath, restoreMath;
 
     beforeAll(() => {
         // Mock global marked as a simple passthrough
@@ -129,15 +129,23 @@ describe('markdown.js', () => {
             parse: jest.fn((text) => `<p>${text}</p>`),
             use: jest.fn()
         };
-        global.markedKatex = jest.fn(() => ({}));
+        // Mock katex for restoreMath
+        global.katex = {
+            renderToString: jest.fn((latex, opts) => {
+                const cls = opts?.displayMode ? 'katex-display' : 'katex';
+                return `<span class="${cls}">${latex}</span>`;
+            })
+        };
 
         const mod = require('../entrypoints/dashboard/markdown.js');
         renderMarkdown = mod.renderMarkdown;
+        extractMath    = mod.extractMath;
+        restoreMath    = mod.restoreMath;
     });
 
     afterAll(() => {
         delete global.marked;
-        delete global.markedKatex;
+        delete global.katex;
     });
 
     test('returns empty string for falsy input', () => {
@@ -166,6 +174,213 @@ describe('markdown.js', () => {
         const result = renderMarkdown('<script>alert("xss")</script>');
         // Should return escaped text
         expect(result).toContain('&lt;script&gt;');
+    });
+
+    // ── extractMath tests ─────────────────────────────────────
+
+    test('extractMath: extracts inline math $...$', () => {
+        const { text, mathMap } = extractMath('Theorem: $a^2 + b^2 = c^2$');
+        expect(mathMap).toHaveLength(1);
+        expect(mathMap[0].latex).toBe('a^2 + b^2 = c^2');
+        expect(mathMap[0].display).toBe(false);
+        expect(text).toContain(mathMap[0].token);
+        expect(text).not.toContain('$');
+    });
+
+    test('extractMath: extracts display math $$...$$', () => {
+        const { text, mathMap } = extractMath('Before\n\n$$\n\\frac{a}{b}\n$$\n\nAfter');
+        expect(mathMap).toHaveLength(1);
+        expect(mathMap[0].latex).toBe('\\frac{a}{b}');
+        expect(mathMap[0].display).toBe(true);
+        expect(text).toContain(mathMap[0].token);
+    });
+
+    test('extractMath: handles $..$ inside parentheses ($haha$)', () => {
+        const { text, mathMap } = extractMath('We got ($haha$) and more');
+        expect(mathMap).toHaveLength(1);
+        expect(mathMap[0].latex).toBe('haha');
+        expect(text).toContain('(');
+        expect(text).toContain(')');
+    });
+
+    test('extractMath: handles pipes inside math $|A|$', () => {
+        const { text, mathMap } = extractMath('Determinant $|A|$ of a matrix');
+        expect(mathMap).toHaveLength(1);
+        expect(mathMap[0].latex).toBe('|A|');
+    });
+
+    test('extractMath: handles adjacent text $1$s and $0$.', () => {
+        const { text, mathMap } = extractMath('all $1$s and everything else is $0$.');
+        expect(mathMap).toHaveLength(2);
+        expect(mathMap[0].latex).toBe('1');
+        expect(mathMap[1].latex).toBe('0');
+    });
+
+    test('extractMath: multiple inline math on same line', () => {
+        const { text, mathMap } = extractMath('angle $\\theta$, matrix $3 \\times 3$');
+        expect(mathMap).toHaveLength(2);
+        expect(mathMap[0].latex).toBe('\\theta');
+        expect(mathMap[1].latex).toBe('3 \\times 3');
+    });
+
+    test('extractMath: protects code fences from math extraction', () => {
+        const { text, mathMap } = extractMath('```\nlet x = $5;\n```\n$real math$');
+        expect(mathMap).toHaveLength(1);
+        expect(mathMap[0].latex).toBe('real math');
+        expect(text).toContain('```');
+    });
+
+    test('extractMath: protects inline code from math extraction', () => {
+        const { text, mathMap } = extractMath('Use `$var` for inline code, but $x^2$ is math');
+        expect(mathMap).toHaveLength(1);
+        expect(mathMap[0].latex).toBe('x^2');
+        expect(text).toContain('`$var`');
+    });
+
+    test('extractMath: no math in plain text', () => {
+        const { text, mathMap } = extractMath('No math here, just plain text');
+        expect(mathMap).toHaveLength(0);
+        expect(text).toBe('No math here, just plain text');
+    });
+
+    test('extractMath: handles transpose $A^T$ after parens', () => {
+        const { text, mathMap } = extractMath('a **Transpose** ($A^T$)?');
+        expect(mathMap).toHaveLength(1);
+        expect(mathMap[0].latex).toBe('A^T');
+    });
+
+    // ── restoreMath tests ─────────────────────────────────────
+
+    test('restoreMath: replaces tokens with KaTeX HTML', () => {
+        const mathMap = [
+            { token: '@@REXOW_IM0@@', latex: 'x^2', display: false },
+            { token: '@@REXOW_DM1@@', latex: '\\frac{a}{b}', display: true },
+        ];
+        const html = '<p>result: @@REXOW_IM0@@</p><p>@@REXOW_DM1@@</p>';
+        const result = restoreMath(html, mathMap);
+        expect(result).toContain('<span class="katex">x^2</span>');
+        expect(result).toContain('<span class="katex-display">\\frac{a}{b}</span>');
+    });
+
+    test('restoreMath: falls back if katex unavailable', () => {
+        const savedKatex = global.katex;
+        delete global.katex;
+        const mathMap = [{ token: '@@REXOW_IM0@@', latex: 'x', display: false }];
+        const result = restoreMath('<p>@@REXOW_IM0@@</p>', mathMap);
+        expect(result).toContain('$x$');
+        global.katex = savedKatex;
+    });
+
+    // ── renderMarkdown integration ────────────────────────────
+
+    test('renderMarkdown: inline math in list items is extracted and restored', () => {
+        const input = '- Theorem: $a^2 + b^2 = c^2$';
+        const result = renderMarkdown(input);
+        expect(result).toContain('<span class="katex">a^2 + b^2 = c^2</span>');
+        expect(result).not.toContain('@@REXOW');
+    });
+
+    test('renderMarkdown: inline math in parentheses ($haha$)', () => {
+        const input = 'We got **LaTeX** ($haha$) and **Markdown**';
+        const result = renderMarkdown(input);
+        expect(result).toContain('<span class="katex">haha</span>');
+    });
+
+    test('renderMarkdown: math with pipes $|A|$', () => {
+        const input = 'Determinant (using vertical bars $|A|$) or $A^T$';
+        const result = renderMarkdown(input);
+        expect(result).toContain('<span class="katex">|A|</span>');
+        expect(result).toContain('<span class="katex">A^T</span>');
+    });
+
+    test('renderMarkdown: display math $$...$$ rendered with displayMode', () => {
+        const input = 'Equation:\n\n$$\n\\frac{a}{b}\n$$';
+        const result = renderMarkdown(input);
+        expect(result).toContain('<span class="katex-display">\\frac{a}{b}</span>');
+    });
+
+    test('renderMarkdown: adjacent $1$s and $0$ handled correctly', () => {
+        const input = 'the diagonal is all $1$s and everything else is $0$.';
+        const result = renderMarkdown(input);
+        expect(result).toContain('<span class="katex">1</span>');
+        expect(result).toContain('<span class="katex">0</span>');
+    });
+
+    test('extractMath: inline code with $ restored without corruption', () => {
+        // JS String.replace treats $ in replacement as special ($`, $', etc.)
+        // split/join must be used instead.
+        const input = '`$x^2$` → $x^2$';
+        const { text, mathMap } = extractMath(input);
+        // The inline code `$x^2$` should be restored intact
+        expect(text).toContain('`$x^2$`');
+        // The math outside backticks should be extracted
+        expect(mathMap).toHaveLength(1);
+        expect(mathMap[0].latex).toBe('x^2');
+        // No @@REXOW_IC tokens should leak
+        expect(text).not.toContain('@@REXOW_IC');
+    });
+
+    test('renderMarkdown: inline code with $ does not leak tokens', () => {
+        const input = '`$x^2$` → $x^2$';
+        const result = renderMarkdown(input);
+        expect(result).not.toContain('@@REXOW');
+        expect(result).toContain('`$x^2$`');
+        expect(result).toContain('<span class="katex">x^2</span>');
+    });
+
+    test('extractMath: display math normalizes single \\ at end of line to \\\\', () => {
+        const input = '$$\n\\begin{pmatrix}\n0 & -1 & 0 \\\n1 & 0 & 0 \\\n0 & 0 & 1\n\\end{pmatrix}\n$$';
+        const { mathMap } = extractMath(input);
+        expect(mathMap).toHaveLength(1);
+        // Single \ before newline should become \\
+        expect(mathMap[0].latex).toContain('0 \\\\\n1');
+        expect(mathMap[0].latex).toContain('0 \\\\\n0');
+    });
+
+    test('extractMath: display math preserves existing \\\\ row breaks', () => {
+        const input = '$$\n\\begin{pmatrix}\n0 & -1 & 0 \\\\\n1 & 0 & 0 \\\\\n0 & 0 & 1\n\\end{pmatrix}\n$$';
+        const { mathMap } = extractMath(input);
+        expect(mathMap).toHaveLength(1);
+        // Already-correct \\\\ should not become \\\\\\\\
+        expect(mathMap[0].latex).toContain('0 \\\\\n1');
+        expect(mathMap[0].latex).not.toContain('\\\\\\\\');
+    });
+
+    test('extractMath: sanitizes pre-existing REXOW tokens from input', () => {
+        const input = 'Some text @@REXOW_IC0@@ with @@REXOW_IM5@@ stale tokens @@REXOW_DM2@@ left over';
+        const { text, mathMap } = extractMath(input);
+        expect(text).not.toContain('@@REXOW_IC0@@');
+        expect(text).not.toContain('@@REXOW_IM5@@');
+        expect(text).not.toContain('@@REXOW_DM2@@');
+        expect(mathMap).toHaveLength(0);
+    });
+
+    test('extractMath: sanitizes stale tokens but still extracts real math', () => {
+        const input = '@@REXOW_IC0@@ real text $x^2$ end';
+        const { text, mathMap } = extractMath(input);
+        expect(text).not.toContain('@@REXOW_IC0@@');
+        expect(mathMap).toHaveLength(1);
+        expect(mathMap[0].latex).toBe('x^2');
+    });
+
+    test('restoreMath: strips leaked tokens from output', () => {
+        const mathMap = [
+            { token: '@@REXOW_IM0@@', latex: 'x^2', display: false },
+        ];
+        // Simulate a case where an unrelated token leaks into the HTML
+        const html = '<p>@@REXOW_IM0@@ and @@REXOW_IC3@@ leaked</p>';
+        const result = restoreMath(html, mathMap);
+        expect(result).toContain('<span class="katex">x^2</span>');
+        expect(result).not.toContain('@@REXOW_IC3@@');
+        expect(result).not.toContain('@@REXOW');
+    });
+
+    test('extractMath: handles double-backtick inline code ``code``', () => {
+        const input = 'Use ``$x^2$`` for code, $y^2$ is math';
+        const { text, mathMap } = extractMath(input);
+        expect(mathMap).toHaveLength(1);
+        expect(mathMap[0].latex).toBe('y^2');
+        expect(text).toContain('``$x^2$``');
     });
 });
 

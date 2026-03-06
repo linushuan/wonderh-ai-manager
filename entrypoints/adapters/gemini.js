@@ -42,6 +42,12 @@ const SKIP_CLASSES = new Set([
 export default class GeminiAdapter {
     constructor() { this.name = "Gemini"; }
 
+    _imageMarkdown(src, alt = 'Image') {
+        if (!src) return '';
+        const safeSrc = String(src).replace(/\s/g, '%20').replace(/\)/g, '%29');
+        return `\n\n![${alt}](${safeSrc})\n\n`;
+    }
+
     /**
      * Strip known prefixes from user query text (e.g. "你說了" added by Gemini UI).
      */
@@ -104,7 +110,7 @@ export default class GeminiAdapter {
             if (this._shouldSkip(el)) continue;
 
             // ── Math block (display equation) ──
-            if (el.classList?.contains('math-block') || (el.hasAttribute?.('data-math') && !el.classList?.contains('math-inline'))) {
+            if (el.classList?.contains('math-block')) {
                 const latex = el.getAttribute('data-math') || '';
                 if (latex) {
                     parts.push(`\n\n$$\n${latex}\n$$\n\n`);
@@ -113,7 +119,7 @@ export default class GeminiAdapter {
             }
 
             // ── Inline math ──
-            if (el.classList?.contains('math-inline')) {
+            if (el.classList?.contains('math-inline') || (el.hasAttribute?.('data-math') && !el.classList?.contains('math-block'))) {
                 const latex = el.getAttribute('data-math') || '';
                 if (latex) {
                     parts.push(`$${latex}$`);
@@ -124,12 +130,18 @@ export default class GeminiAdapter {
             // ── Code block ──
             if (tag === 'CODE-BLOCK' || el.classList?.contains('code-block')) {
                 const codeEl = el.querySelector('code[role="text"], code');
-                const code = codeEl?.textContent || el.textContent || '';
+                // Use innerText to preserve visual line breaks; fall back to textContent
+                let code = codeEl?.innerText || codeEl?.textContent || el.innerText || el.textContent || '';
                 // Try to detect language
                 let lang = '';
                 const langLabel = el.querySelector('.code-block-decoration');
                 if (langLabel) {
                     lang = (langLabel.textContent || '').trim().toLowerCase();
+                    // Remove decoration text that may appear at the start of code content
+                    const decorText = (langLabel.textContent || '').trim();
+                    if (decorText && code.startsWith(decorText)) {
+                        code = code.slice(decorText.length).trim();
+                    }
                 }
                 parts.push(`\n\n\`\`\`${lang}\n${code}\n\`\`\`\n\n`);
                 continue;
@@ -186,10 +198,17 @@ export default class GeminiAdapter {
                     const text = this._inlineToMarkdown(li);
                     parts.push(`${indent}${bullet}${text}\n`);
 
-                    // Recurse for nested lists
-                    const nestedList = li.querySelector(':scope > ul, :scope > ol');
-                    if (nestedList) {
-                        this._walkNodes({ childNodes: [nestedList] }, parts, listDepth + 1);
+                    // Process block-level children (including wrappers that contain them)
+                    for (const child of Array.from(li.children)) {
+                        const childTag = child.tagName?.toUpperCase() || '';
+                        if (childTag === 'UL' || childTag === 'OL') {
+                            this._walkNodes({ childNodes: [child] }, parts, listDepth + 1);
+                        } else if (childTag === 'CODE-BLOCK' || child.classList?.contains('code-block') ||
+                                   childTag === 'PRE' || childTag === 'TABLE' || childTag === 'TABLE-BLOCK' ||
+                                   childTag === 'BLOCKQUOTE' || child.classList?.contains('math-block') ||
+                                   child.querySelector('code-block, pre, table, table-block, blockquote, ul, ol, .math-block')) {
+                            this._walkNodes({ childNodes: [child] }, parts, listDepth);
+                        }
                     }
                 });
                 parts.push('\n');
@@ -251,6 +270,15 @@ export default class GeminiAdapter {
             // ── Links ──
             if (tag === 'A') {
                 const href = el.getAttribute('href') || '';
+                const imgInLink = el.querySelector('img');
+                if (imgInLink) {
+                    const src = imgInLink.getAttribute('src') || imgInLink.getAttribute('data-src') || '';
+                    const alt = imgInLink.getAttribute('alt') || 'Image';
+                    if (src) {
+                        parts.push(this._imageMarkdown(src, alt));
+                        continue;
+                    }
+                }
                 const text = el.textContent?.trim() || href;
                 if (href) {
                     parts.push(`[${text}](${href})`);
@@ -262,11 +290,41 @@ export default class GeminiAdapter {
 
             // ── Image ──
             if (tag === 'IMG') {
-                const src = el.getAttribute('src') || '';
+                const src = el.getAttribute('src') || el.getAttribute('data-src') || '';
                 const alt = el.getAttribute('alt') || 'Image';
                 if (src) {
-                    parts.push(`\n\n![${alt}](${src})\n\n`);
+                    parts.push(this._imageMarkdown(src, alt));
                 }
+                continue;
+            }
+
+            // ── Generated / custom image elements (Gemini-specific) ──
+            if (tag === 'GENERATED-IMAGE' || tag === 'PANIMG' ||
+                tag === 'IMG-VIEWER' || tag === 'IMAGE-PREVIEW' ||
+                el.classList?.contains('generated-image') ||
+                el.classList?.contains('image-container')) {
+                // Try to find an <img> inside the custom element
+                const imgEl = el.querySelector('img');
+                const src = imgEl?.getAttribute('src') || imgEl?.getAttribute('data-src') ||
+                            el.getAttribute('src') || el.getAttribute('data-src') || '';
+                const alt = imgEl?.getAttribute('alt') || el.getAttribute('alt') || 'Generated Image';
+                if (src) {
+                    parts.push(this._imageMarkdown(src, alt));
+                    continue;
+                }
+                // Canvas-based images: try to extract data URL
+                const canvas = el.querySelector('canvas');
+                if (canvas) {
+                    try {
+                        const dataUrl = canvas.toDataURL?.();
+                        if (dataUrl && dataUrl !== 'data:,') {
+                            parts.push(this._imageMarkdown(dataUrl, 'Generated Image'));
+                            continue;
+                        }
+                    } catch (_) { /* canvas tainted, skip */ }
+                }
+                // If we can't get the image, note its presence
+                parts.push('\n\n*[Image]*\n\n');
                 continue;
             }
 
@@ -307,6 +365,20 @@ export default class GeminiAdapter {
             const tag = node.tagName?.toUpperCase() || '';
 
             if (this._shouldSkip(node)) continue;
+
+            // Skip block-level elements — they are handled by _walkNodes
+            // in the list handler (nested lists, code blocks, tables, etc.)
+            if (tag === 'UL' || tag === 'OL' || tag === 'LI' ||
+                tag === 'CODE-BLOCK' || tag === 'PRE' ||
+                tag === 'TABLE' || tag === 'TABLE-BLOCK' ||
+                tag === 'BLOCKQUOTE' ||
+                node.classList?.contains('code-block')) {
+                continue;
+            }
+
+            if (node.querySelector?.('code-block, pre, table, table-block, blockquote, ul, ol, .math-block')) {
+                continue;
+            }
 
             // Inline math
             if (node.classList?.contains('math-inline') ||
@@ -362,6 +434,7 @@ export default class GeminiAdapter {
 
     /**
      * Convert an HTML table element to markdown table syntax.
+     * Uses _inlineToMarkdown for cells to preserve LaTeX math.
      */
     _tableToMarkdown(table) {
         const rows = [];
@@ -369,14 +442,14 @@ export default class GeminiAdapter {
         // Header row
         const headerCells = Array.from(table.querySelectorAll('thead tr th, thead tr td'));
         if (headerCells.length > 0) {
-            rows.push(headerCells.map(c => (c.textContent || '').trim()));
+            rows.push(headerCells.map(c => this._inlineToMarkdown(c).trim()));
         }
 
         // Body rows
         const bodyRows = table.querySelectorAll('tbody tr');
         bodyRows.forEach(row => {
             const cells = Array.from(row.querySelectorAll('td, th'));
-            rows.push(cells.map(c => (c.textContent || '').trim()));
+            rows.push(cells.map(c => this._inlineToMarkdown(c).trim()));
         });
 
         if (rows.length === 0) return '';
@@ -569,72 +642,104 @@ export default class GeminiAdapter {
     }
 
     /**
-     * Wait for Gemini to finish its AI response using MutationObserver.
-     * Detects both new model-response elements AND in-place content changes.
-     * Resolves when DOM mutations stop for 2 seconds (response complete).
-     * @param {number} maxWaitMs - Maximum time to wait (default 60s)
+     * Wait for Gemini to finish its AI response.
+     *
+     * Strategy — **content-length stability + send-button polling**.
+     * Gemini fires thousands of DOM mutations during streaming (character
+     * data, attribute changes, UI animations) which made the old
+     * MutationObserver settle-timer approach wait 10 s+ after the real
+     * response was already complete.
+     *
+     * New approach:
+     *  1. Poll every 300 ms for the send-button being re-enabled (instant).
+     *  2. Track the last model-response element's *text length*. When the
+     *     length stops changing for 2 consecutive checks (≈ 600 ms) AND a
+     *     new response has appeared, resolve immediately.
+     *  3. Max timeout fallback.
+     *
+     * No MutationObserver needed → no timer resets from noisy DOM changes.
+     *
+     * @param {number} maxWaitMs - Maximum time to wait (default 60 s)
      */
     waitForResponse(maxWaitMs = 60000) {
         return new Promise((resolve) => {
             const startCount = document.querySelectorAll('model-response').length;
             let settled = false;
-            let settleTimer = null;
-            let mutationSeen = false;
-            let sendButtonReady = false;
-            const SETTLE_DELAY = 2000; // 2s of DOM silence = response done
+            let prevLen = -1;
+            let stableCount = 0;
+            let sawStreaming = false;
+            let streamingStartedAt = 0;
+            let prevSendReady = isSendButtonReady();
+            const STABLE_NEEDED = 4; // 4 × 300 ms = 1200 ms of stable content
+            const MIN_STREAM_MS = 1200;
 
-            const target =
-                document.querySelector('infinite-scroller') ||
-                document.querySelector('.conversation-container') ||
-                document.querySelector('[role="main"]') ||
-                document.body;
+            function isSendButtonReady() {
+                return !!(
+                    document.querySelector('.send-button:not([disabled])') ||
+                    document.querySelector('button[aria-label="Send message"]:not([disabled])') ||
+                    document.querySelector('button[aria-label*="Send"]:not([disabled])') ||
+                    document.querySelector('[data-test-id="send-button"]:not([disabled])') ||
+                    document.querySelector('button.send-button:not([disabled])')
+                );
+            }
 
-            const observer = new MutationObserver(() => {
-                mutationSeen = true;
-                // Don't reset timer if send button already detected — response is done
-                if (sendButtonReady) return;
-                // Reset settle timer on every mutation
-                if (settleTimer) clearTimeout(settleTimer);
-                // Start settle countdown — resolves if no more mutations for SETTLE_DELAY
-                settleTimer = setTimeout(() => finish(), SETTLE_DELAY);
-            });
-
-            observer.observe(target, {
-                childList: true,
-                subtree: true,
-                characterData: true
-            });
-
-            // Max timeout — resolves even if mutations never stop
             const maxTimer = setTimeout(() => {
                 console.log('[REXOW] waitForResponse: max timeout reached');
                 finish();
             }, maxWaitMs);
 
-            // Periodic check: if we see a new model-response AND mutations stopped, finish
-            const checkInterval = setInterval(() => {
-                const currentCount = document.querySelectorAll('model-response').length;
-                if (currentCount > startCount && !settleTimer && mutationSeen) {
-                    settleTimer = setTimeout(() => finish(), SETTLE_DELAY);
+            const poll = setInterval(() => {
+                const responses = document.querySelectorAll('model-response');
+                const hasNewResponse = responses.length > startCount;
+                const sendBtnDisabled = !!(
+                    document.querySelector('.send-button[disabled]') ||
+                    document.querySelector('button[aria-label="Send message"][disabled]') ||
+                    document.querySelector('button[aria-label*="Send"][disabled]') ||
+                    document.querySelector('[data-test-id="send-button"][disabled]') ||
+                    document.querySelector('button.send-button[disabled]')
+                );
+
+                if (hasNewResponse || sendBtnDisabled) {
+                    if (!sawStreaming) streamingStartedAt = Date.now();
+                    sawStreaming = true;
                 }
-                // Also check: if the send button re-appeared (Gemini enables it after response)
-                const sendBtn = document.querySelector('.send-button:not([disabled])') ||
-                    document.querySelector('button[aria-label*="Send"]:not([disabled])');
-                if (sendBtn && mutationSeen) {
-                    // Send button is enabled again → response is definitively complete
-                    console.log('[REXOW] waitForResponse: send button re-enabled, finishing');
-                    sendButtonReady = true;
+
+                const sendReady = isSendButtonReady();
+                const streamElapsed = sawStreaming ? (Date.now() - streamingStartedAt) : 0;
+
+                // Fast path: send button became ready after being not-ready.
+                // Do not finish just because it's currently ready; Gemini may
+                // keep it ready while response text is still streaming.
+                if (sendReady && !prevSendReady && sawStreaming && streamElapsed >= MIN_STREAM_MS) {
+                    console.log('[REXOW] waitForResponse: send button ready');
                     finish();
+                    return;
                 }
-            }, 1000);
+                prevSendReady = sendReady;
+
+                // Content-length stability check
+                if (hasNewResponse) {
+                    const last = responses[responses.length - 1];
+                    const curLen = (last.textContent || '').length;
+                    if (curLen === prevLen && curLen > 0) {
+                        stableCount++;
+                        if (stableCount >= STABLE_NEEDED && sawStreaming && streamElapsed >= MIN_STREAM_MS) {
+                            console.log('[REXOW] waitForResponse: content stable');
+                            finish();
+                            return;
+                        }
+                    } else {
+                        stableCount = 0;
+                    }
+                    prevLen = curLen;
+                }
+            }, 300);
 
             function finish() {
                 if (settled) return;
                 settled = true;
-                observer.disconnect();
                 clearTimeout(maxTimer);
-                clearTimeout(settleTimer);
-                clearInterval(checkInterval);
+                clearInterval(poll);
                 resolve();
             }
         });

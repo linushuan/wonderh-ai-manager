@@ -306,6 +306,53 @@ test('WAIT_AND_EXTRACT handles empty response during sendMessage', () => {
     expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ status: "error", msg: "No response from content script." }));
 });
 
+// ── IS_REXOW_OPEN ──────────────────────────────────────────
+
+test('IS_REXOW_OPEN returns false when no dashboard port is connected', () => {
+    const sendResponse = jest.fn();
+    global.chrome.runtime.onMessage._fire({ type: 'IS_REXOW_OPEN' }, {}, sendResponse);
+    expect(sendResponse).toHaveBeenCalledWith({ status: 'ok', open: false });
+});
+
+test('IS_REXOW_OPEN returns true when dashboard port is connected', () => {
+    const mockPort = {
+        name: 'dashboard',
+        onMessage: { addListener: jest.fn() },
+        onDisconnect: { addListener: jest.fn() },
+        postMessage: jest.fn()
+    };
+    const connectListener = global.chrome.runtime.onConnect.addListener.mock.calls[0][0];
+    connectListener(mockPort);
+
+    const sendResponse = jest.fn();
+    global.chrome.runtime.onMessage._fire({ type: 'IS_REXOW_OPEN' }, {}, sendResponse);
+    expect(sendResponse).toHaveBeenCalledWith({ status: 'ok', open: true });
+});
+
+// ── Dashboard first connect → REXOW_OPENED broadcast ──────
+
+test('broadcasts REXOW_OPENED to all tabs when first dashboard port connects', () => {
+    mockTabsQuery.mockImplementation((_, cb) => cb([
+        { id: 1, url: 'https://gemini.google.com/app/123' },
+        { id: 2, url: 'https://chatgpt.com/c/456' }
+    ]));
+    mockTabsSendMessage.mockImplementation((tabId, msg, cb) => { if (cb) cb(); });
+
+    const mockPort = {
+        name: 'dashboard',
+        onMessage: { addListener: jest.fn() },
+        onDisconnect: { addListener: jest.fn() },
+        postMessage: jest.fn()
+    };
+
+    const connectListener = global.chrome.runtime.onConnect.addListener.mock.calls[0][0];
+    connectListener(mockPort);
+
+    expect(mockTabsQuery).toHaveBeenCalled();
+    expect(mockTabsSendMessage).toHaveBeenCalledWith(1, { type: 'REXOW_OPENED' }, expect.any(Function));
+    expect(mockTabsSendMessage).toHaveBeenCalledWith(2, { type: 'REXOW_OPENED' }, expect.any(Function));
+});
+
 // ── Dashboard port disconnect → REXOW_CLOSED broadcast ──────
 
 test('broadcasts REXOW_CLOSED to all tabs when last dashboard port disconnects', () => {

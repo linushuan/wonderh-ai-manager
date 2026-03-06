@@ -11,6 +11,12 @@ import { renderTree } from './tree.js';
 import { generateSummary, getApiKey } from './api.js';
 import { renderMarkdown } from './markdown.js';
 
+/** Escape HTML special chars to prevent XSS when interpolating into innerHTML */
+function esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 export function initEvents() {
 
     // ── Brand click → welcome ─────────────────────────────────
@@ -190,10 +196,10 @@ export function initEvents() {
         try {
             const text = chat.content || chat.messages.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n\n');
             const summary = await generateSummary(text, apiKey);
-            updateSummaryDisplay(`<p style="white-space:pre-wrap">${summary}</p>`);
+            updateSummaryDisplay(`<p style="white-space:pre-wrap">${esc(summary)}</p>`);
             updateChat(id, { summary });
         } catch (err) {
-            updateSummaryDisplay(`<span style="color:#f87171">⚠ ${err.message}</span>`);
+            updateSummaryDisplay(`<span style="color:#f87171">⚠ ${esc(err.message)}</span>`);
         }
     });
 
@@ -323,42 +329,8 @@ function handleSendMessage() {
             }
             renderTree();
 
-            // Step 5: Let user switch back to REXOW (only if page is hidden, i.e. user is on AI tab)
-            if (contentArea && document.visibilityState === 'hidden') {
-                const switchBubble = document.createElement('div');
-                switchBubble.className = 'msg-bubble';
-                switchBubble.style.cssText = `
-                    background: linear-gradient(145deg, rgba(16, 185, 129, 0.12) 0%, rgba(16, 185, 129, 0.04) 100%);
-                    border-left: 3px solid rgb(16, 185, 129);
-                    text-align: center;
-                    padding: 12px;
-                `;
-                switchBubble.innerHTML = `
-                    <button id="btnSwitchToRexow" style="
-                        background: rgba(16, 185, 129, 0.2);
-                        color: rgb(110, 231, 183);
-                        border: 1px solid rgba(16, 185, 129, 0.3);
-                        padding: 8px 18px;
-                        border-radius: 8px;
-                        cursor: pointer;
-                        font-family: inherit;
-                        font-size: 13px;
-                        font-weight: 600;
-                        transition: all 0.2s ease;
-                        display: inline-flex;
-                        align-items: center;
-                        gap: 8px;
-                    ">
-                        ✓ AI responded — Switch back to REXOW
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                    </button>`;
-                contentArea.appendChild(switchBubble);
-                contentArea.scrollTop = contentArea.scrollHeight;
-
-                document.getElementById('btnSwitchToRexow')?.addEventListener('click', () => {
-                    chrome.runtime.sendMessage({ type: "SWITCH_TO_REXOW" });
-                });
-            }
+            // Sync complete — user can switch back via the float button on the AI tab
+            // or by clicking the REXOW tab directly. No intrusive popup needed.
         });
     });
 }
@@ -411,8 +383,8 @@ function showSyncError(msg, detail, container) {
     if (!target) { alert(msg); return; }
     target.innerHTML = `
     <div style="color:#f87171; padding:16px; border:1px dashed #f87171; border-radius:8px; margin:20px;">
-    <strong>⚠ Sync Failed</strong><br><small>${msg}</small>
-    ${detail ? `<br><br><span style="color:#fff; font-size:12px;">Tip: ${detail}</span>` : ''}
+    <strong>⚠ Sync Failed</strong><br><small>${esc(msg)}</small>
+    ${detail ? `<br><br><span style="color:#fff; font-size:12px;">Tip: ${esc(detail)}</span>` : ''}
     </div>`;
 }
 

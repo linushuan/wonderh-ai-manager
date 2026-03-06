@@ -20,8 +20,28 @@ function injectRexowButton() {
     document.body.appendChild(btn);
 }
 
-// Ensure the button is present when the page first loads
-injectRexowButton();
+function removeRexowButton() {
+    const btn = document.getElementById('rexow-float-btn');
+    if (btn) btn.remove();
+}
+
+function syncButtonVisibilityWithRexowState() {
+    try {
+        chrome.runtime.sendMessage({ type: "IS_REXOW_OPEN" }, (res) => {
+            void chrome.runtime.lastError;
+            if (res?.status === 'ok' && res.open === true) {
+                injectRexowButton();
+            } else {
+                removeRexowButton();
+            }
+        });
+    } catch (_) {
+        removeRexowButton();
+    }
+}
+
+// On AI page load, only show button when dashboard is actually open
+syncButtonVisibilityWithRexowState();
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
@@ -136,11 +156,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.type === "REXOW_CLOSED") {
-        const btn = document.getElementById('rexow-float-btn');
-        if (btn) {
-            btn.remove();
-            console.log('[REXOW] Dashboard closed — removed float button');
-        }
+        removeRexowButton();
+        console.log('[REXOW] Dashboard closed — removed float button');
+    }
+
+    if (request.type === "REXOW_OPENED") {
+        injectRexowButton();
+        console.log('[REXOW] Dashboard opened — ensured float button is visible');
     }
 });
 

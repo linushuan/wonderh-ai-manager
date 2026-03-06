@@ -86,7 +86,7 @@ describe('GeminiAdapter.waitForResponse', () => {
         await expect(adapter.waitForResponse(100)).resolves.toBeUndefined();
     });
 
-    test('resolves early if send button re-appears and mutations stop', async () => {
+    test('resolves when send button re-appears after streaming has started', async () => {
         jest.useFakeTimers();
         setDOM('<div class="conversation-container"></div>');
         const container = document.querySelector('.conversation-container');
@@ -94,43 +94,60 @@ describe('GeminiAdapter.waitForResponse', () => {
         const adapter = new GeminiAdapter();
         const promise = adapter.waitForResponse(5000);
 
-        // Trigger mutation
-        container.appendChild(document.createElement('div'));
-        await Promise.resolve(); // flush MutationObserver microtasks
+        // Simulate streaming state first: disabled send button + model response
+        const disabledBtn = document.createElement('button');
+        disabledBtn.classList.add('send-button');
+        disabledBtn.disabled = true;
+        document.body.appendChild(disabledBtn);
 
-        // Emulate sending done
+        const mr = document.createElement('model-response');
+        mr.textContent = 'streaming';
+        container.appendChild(mr);
+
+        jest.advanceTimersByTime(1200);
+        await Promise.resolve();
+
+        // Re-enable send button (Gemini re-enables it when streaming completes)
+        disabledBtn.remove();
         const btn = document.createElement('button');
         btn.classList.add('send-button');
         document.body.appendChild(btn);
 
-        jest.advanceTimersByTime(1500); // Trigger setInterval
+        // Poll fires every 300ms
+        jest.advanceTimersByTime(300);
         await Promise.resolve();
-        jest.advanceTimersByTime(1000); // Trigger settleTimer
 
         await expect(promise).resolves.toBeUndefined();
         jest.useRealTimers();
     });
 
-    test('resolves when model-response count increases', async () => {
+    test('resolves when model-response count increases and content stabilises long enough', async () => {
         jest.useFakeTimers();
         setDOM('<div class="conversation-container"></div>');
         const container = document.querySelector('.conversation-container');
 
         const adapter = new GeminiAdapter();
-        // Since no model-responses on load, startCount = 0
+        // startCount = 0
         const promise = adapter.waitForResponse(5000);
 
-        // Wait, then add a model-response 
-        jest.advanceTimersByTime(100);
+        // Add a model-response with text content
         const mr = document.createElement('model-response');
+        mr.textContent = 'Hello world';
         container.appendChild(mr);
-        await Promise.resolve(); // flush MutationObserver microtasks
 
-        // Let the interval check detect it
-        jest.advanceTimersByTime(1500);
+        // First poll detects new response, records length — stableCount = 0
+        jest.advanceTimersByTime(300);
         await Promise.resolve();
-        // Let the 2000ms SETTLE timer expire
-        jest.advanceTimersByTime(2500);
+
+        // Subsequent polls keep same length
+        jest.advanceTimersByTime(300);
+        await Promise.resolve();
+        jest.advanceTimersByTime(300);
+        await Promise.resolve();
+        jest.advanceTimersByTime(300);
+        await Promise.resolve();
+        jest.advanceTimersByTime(300);
+        await Promise.resolve();
 
         await expect(promise).resolves.toBeUndefined();
         jest.useRealTimers();
