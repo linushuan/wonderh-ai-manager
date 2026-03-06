@@ -9,7 +9,7 @@ A **local-first browser extension** (Chrome & Firefox) for organising, syncing, 
 - 💬 **Send Messages** — Type and send messages to AI directly from the dashboard, with auto-sync of the response
 - 📝 **Markdown & LaTeX** — AI responses are rendered with full Markdown support (headers, code blocks, tables, lists) and KaTeX math equations
 - 📋 **Research Notes** — Per-chat notes panel alongside extracted content
-- 🤖 **AI Summary** — One-click bullet-point summary via OpenAI (`gpt-4o-mini`)
+- 🤖 **AI Summary**(not yet) — One-click bullet-point summary via OpenAI (`gpt-4o-mini`)
 - 🔒 **Local Storage** — Data saved as plain JSON on disk (`~/wonderh_ai_data.json`). Nothing leaves your machine except the optional summary API call
 
 ## Supported Platforms
@@ -18,7 +18,7 @@ A **local-first browser extension** (Chrome & Firefox) for organising, syncing, 
 |---|---|
 | Google Gemini | `gemini.google.com` |
 | ChatGPT | `chatgpt.com` |
-| Claude | `claude.ai` |
+| Claude(not yet) | `claude.ai` |
 
 ## Installation
 
