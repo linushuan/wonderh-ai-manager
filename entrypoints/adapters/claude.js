@@ -30,6 +30,14 @@ const CONVERSATION_ROOT_SELECTORS = [
 export default class ClaudeAdapter {
     constructor() { this.name = "Claude"; }
 
+    /**
+     * Escape characters in a URL that would break markdown link/image syntax.
+     * Specifically, `)` ends a [text](url) link prematurely.
+     */
+    _safeUrl(url) {
+        return String(url).replace(/\s/g, '%20').replace(/\(/g, '%28').replace(/\)/g, '%29');
+    }
+
     // ─── DOM-to-Markdown helpers ──────────────────────────────
 
     /**
@@ -216,7 +224,7 @@ export default class ClaudeAdapter {
             if (tag === 'A') {
                 const href = el.getAttribute('href') || '';
                 const text = el.textContent?.trim() || href;
-                parts.push(href ? `[${text}](${href})` : text);
+                parts.push(href ? `[${text}](${this._safeUrl(href)})` : text);
                 continue;
             }
 
@@ -224,7 +232,7 @@ export default class ClaudeAdapter {
             if (tag === 'IMG') {
                 const src = el.getAttribute('src') || '';
                 const alt = el.getAttribute('alt') || 'Image';
-                if (src) parts.push(`\n\n![${alt}](${src})\n\n`);
+                if (src) parts.push(`\n\n![${alt}](${this._safeUrl(src)})\n\n`);
                 continue;
             }
 
@@ -324,7 +332,7 @@ export default class ClaudeAdapter {
             if (tag === 'A') {
                 const href = node.getAttribute('href') || '';
                 const text = node.textContent?.trim() || href;
-                parts.push(href ? `[${text}](${href})` : text);
+                parts.push(href ? `[${text}](${this._safeUrl(href)})` : text);
                 continue;
             }
             if (tag === 'BR') {
@@ -424,12 +432,10 @@ export default class ClaudeAdapter {
      * @returns {string}
      */
     _extractText(el, role) {
-        if (role === 'assistant') {
-            const md = this._domToMarkdown(el);
-            // If DOM walking produced meaningful content, use it;
-            // otherwise fall back to innerText
-            if (md && md.length > 0) return md;
-        }
+        // Use DOM walking for all roles to preserve LaTeX, markdown,
+        // and special formatting in both user and assistant messages
+        const md = this._domToMarkdown(el);
+        if (md && md.length > 0) return md;
         return el?.innerText?.trim() || '';
     }
 

@@ -8,6 +8,14 @@
 export default class ChatGPTAdapter {
     constructor() { this.name = "ChatGPT"; }
 
+    /**
+     * Escape characters in a URL that would break markdown link/image syntax.
+     * Specifically, `)` ends a [text](url) link prematurely.
+     */
+    _safeUrl(url) {
+        return String(url).replace(/\s/g, '%20').replace(/\(/g, '%28').replace(/\)/g, '%29');
+    }
+
     // ─── DOM-to-Markdown helpers ──────────────────────────────
 
     /**
@@ -203,7 +211,7 @@ export default class ChatGPTAdapter {
             if (tag === 'A') {
                 const href = el.getAttribute('href') || '';
                 const text = el.textContent?.trim() || href;
-                parts.push(href ? `[${text}](${href})` : text);
+                parts.push(href ? `[${text}](${this._safeUrl(href)})` : text);
                 continue;
             }
 
@@ -211,7 +219,7 @@ export default class ChatGPTAdapter {
             if (tag === 'IMG') {
                 const src = el.getAttribute('src') || '';
                 const alt = el.getAttribute('alt') || 'Image';
-                if (src) parts.push(`\n\n![${alt}](${src})\n\n`);
+                if (src) parts.push(`\n\n![${alt}](${this._safeUrl(src)})\n\n`);
                 continue;
             }
 
@@ -297,7 +305,7 @@ export default class ChatGPTAdapter {
             if (tag === 'A') {
                 const href = node.getAttribute('href') || '';
                 const text = node.textContent?.trim() || href;
-                parts.push(href ? `[${text}](${href})` : text);
+                parts.push(href ? `[${text}](${this._safeUrl(href)})` : text);
                 continue;
             }
             if (tag === 'BR') {
@@ -363,8 +371,10 @@ export default class ChatGPTAdapter {
                 // Walk the DOM to preserve code blocks, LaTeX, tables, formatting
                 text = this._domToMarkdown(node);
             } else {
-                // User messages: plain text is sufficient
-                text = node.innerText?.trim() || '';
+                // User messages: walk DOM to preserve LaTeX and markdown
+                text = this._domToMarkdown(node);
+                // Fallback to plain text if DOM walking produced nothing
+                if (!text) text = node.innerText?.trim() || '';
             }
 
             if (!text) return; // skip empty nodes

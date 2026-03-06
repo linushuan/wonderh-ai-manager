@@ -44,8 +44,16 @@ export default class GeminiAdapter {
 
     _imageMarkdown(src, alt = 'Image') {
         if (!src) return '';
-        const safeSrc = String(src).replace(/\s/g, '%20').replace(/\)/g, '%29');
+        const safeSrc = this._safeUrl(src);
         return `\n\n![${alt}](${safeSrc})\n\n`;
+    }
+
+    /**
+     * Escape characters in a URL that would break markdown link/image syntax.
+     * Specifically, `)` ends a [text](url) link prematurely.
+     */
+    _safeUrl(url) {
+        return String(url).replace(/\s/g, '%20').replace(/\(/g, '%28').replace(/\)/g, '%29');
     }
 
     /**
@@ -281,7 +289,7 @@ export default class GeminiAdapter {
                 }
                 const text = el.textContent?.trim() || href;
                 if (href) {
-                    parts.push(`[${text}](${href})`);
+                    parts.push(`[${text}](${this._safeUrl(href)})`);
                 } else {
                     parts.push(text);
                 }
@@ -295,6 +303,48 @@ export default class GeminiAdapter {
                 if (src) {
                     parts.push(this._imageMarkdown(src, alt));
                 }
+                continue;
+            }
+
+            // ── Figure / Picture (standard HTML image wrappers) ──
+            if (tag === 'FIGURE') {
+                const imgEl = el.querySelector('img');
+                const src = imgEl?.getAttribute('src') || imgEl?.getAttribute('data-src') || '';
+                const alt = imgEl?.getAttribute('alt') || el.querySelector('figcaption')?.textContent?.trim() || 'Image';
+                if (src) {
+                    parts.push(this._imageMarkdown(src, alt));
+                    continue;
+                }
+                // Fallback: recurse for other content inside figure
+                this._walkNodes(el, parts, listDepth);
+                continue;
+            }
+
+            if (tag === 'PICTURE') {
+                const imgEl = el.querySelector('img');
+                let src = imgEl?.getAttribute('src') || imgEl?.getAttribute('data-src') || '';
+                if (!src) {
+                    const source = el.querySelector('source');
+                    const srcset = source?.getAttribute('srcset') || '';
+                    src = srcset.split(',')[0]?.trim()?.split(/\s+/)[0] || '';
+                }
+                const alt = imgEl?.getAttribute('alt') || 'Image';
+                if (src) {
+                    parts.push(this._imageMarkdown(src, alt));
+                    continue;
+                }
+            }
+
+            // ── Standalone canvas (generated images) ──
+            if (tag === 'CANVAS') {
+                try {
+                    const dataUrl = el.toDataURL?.();
+                    if (dataUrl && dataUrl !== 'data:,') {
+                        parts.push(this._imageMarkdown(dataUrl, 'Generated Image'));
+                        continue;
+                    }
+                } catch (_) { /* canvas tainted, skip */ }
+                parts.push('\n\n*[Image]*\n\n');
                 continue;
             }
 
@@ -415,7 +465,7 @@ export default class GeminiAdapter {
             if (tag === 'A') {
                 const href = node.getAttribute('href') || '';
                 const text = node.textContent?.trim() || href;
-                parts.push(href ? `[${text}](${href})` : text);
+                parts.push(href ? `[${text}](${this._safeUrl(href)})` : text);
                 continue;
             }
 
@@ -498,24 +548,29 @@ export default class GeminiAdapter {
 
                     cleanedText = this._domToMarkdown(contentEl);
                 } else {
-                    // For user messages: extract plain text
-                    const textLines = node.querySelectorAll('.query-text-line');
-                    if (textLines.length > 0) {
-                        cleanedText = Array.from(textLines)
-                            .map(line => (line.textContent || '').trim())
-                            .filter(l => l.length > 0)
-                            .join('\n');
-                    } else {
-                        const innerContent =
-                            node.querySelector('.query-text') ||
-                            node.querySelector('.query-content') ||
-                            node;
-                        cleanedText = (innerContent?.innerText?.trim() || '')
-                            .split('\n')
-                            .map(l => l.trim())
-                            .filter(l => l.length > 0)
-                            .filter(l => !NOISE_LINES.has(l))
-                            .join('\n');
+                    // For user messages: use DOM walking to preserve LaTeX,
+                    // markdown formatting, and special characters
+                    const queryContent =
+                        node.querySelector('.query-text') ||
+                        node.querySelector('.query-content') ||
+                        node;
+                    cleanedText = this._domToMarkdown(queryContent);
+                    // Fallback to plain text if DOM walking produced nothing
+                    if (!cleanedText) {
+                        const textLines = node.querySelectorAll('.query-text-line');
+                        if (textLines.length > 0) {
+                            cleanedText = Array.from(textLines)
+                                .map(line => (line.textContent || '').trim())
+                                .filter(l => l.length > 0)
+                                .join('\n');
+                        } else {
+                            cleanedText = (queryContent?.innerText?.trim() || '')
+                                .split('\n')
+                                .map(l => l.trim())
+                                .filter(l => l.length > 0)
+                                .filter(l => !NOISE_LINES.has(l))
+                                .join('\n');
+                        }
                     }
                     cleanedText = this._cleanUserText(cleanedText);
                 }

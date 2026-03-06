@@ -622,4 +622,156 @@ describe('ClaudeAdapter DOM walking', () => {
         expect(md).toBe('Text');
         expect(md).not.toContain('Copy');
     });
+
+    test('_safeUrl encodes ( and ) to prevent markdown link breakage', () => {
+        const adapter = new ClaudeAdapter();
+        expect(adapter._safeUrl('https://example.com/fn(x)')).toBe('https://example.com/fn%28x%29');
+    });
+
+    test('_domToMarkdown escapes ( and ) in link URLs', () => {
+        setDOM('<div id="test"><a href="https://example.com/rotate_z(theta)">Download</a></div>');
+        const adapter = new ClaudeAdapter();
+        const el = document.getElementById('test');
+        const md = adapter._domToMarkdown(el);
+        expect(md).toContain('[Download](https://example.com/rotate_z%28theta%29)');
+    });
+
+    test('_domToMarkdown escapes ( and ) in image URLs', () => {
+        setDOM('<div id="test"><img src="https://example.com/img(1).png" alt="Photo"></div>');
+        const adapter = new ClaudeAdapter();
+        const el = document.getElementById('test');
+        const md = adapter._domToMarkdown(el);
+        expect(md).toContain('![Photo](https://example.com/img%281%29.png)');
+    });
+
+    test('_extractText uses DOM walking for user messages too', () => {
+        setDOM('<div id="test"><p>Check $x^2$ formula</p></div>');
+        const adapter = new ClaudeAdapter();
+        const el = document.getElementById('test');
+        const text = adapter._extractText(el, 'user');
+        expect(text).toBe('Check $x^2$ formula');
+    });
+});
+
+// ─────────────────────────────────────────────────────────────
+
+describe('GeminiAdapter DOM walking', () => {
+    test('_domToMarkdown extracts italic text with emoji and inline math', () => {
+        setDOM(`<div id="test">
+            <i data-path-to-node="9" data-index-in-node="0">Generated with ✨ and <span class="math-inline" data-math="LaTeX" data-index-in-node="21"><span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height: 0.6833em;"></span><span class="mord mathnormal">L</span><span class="mord mathnormal">a</span><span style="margin-right: 0.1389em;" class="mord mathnormal">T</span><span class="mord mathnormal">e</span><span style="margin-right: 0.0785em;" class="mord mathnormal">X</span></span></span></span></span></i>
+        </div>`);
+        const adapter = new GeminiAdapter();
+        const el = document.getElementById('test');
+        const md = adapter._domToMarkdown(el);
+        expect(md).toContain('*Generated with ✨ and $LaTeX$*');
+    });
+
+    test('_domToMarkdown extracts math-inline with data-math attribute', () => {
+        setDOM(`<div id="test"><p>The value of <span class="math-inline" data-math="x^2"><span class="katex">x²</span></span> is big</p></div>`);
+        const adapter = new GeminiAdapter();
+        const el = document.getElementById('test');
+        const md = adapter._domToMarkdown(el);
+        expect(md).toContain('$x^2$');
+        expect(md).not.toContain('x²');
+    });
+
+    test('_domToMarkdown extracts math-block with data-math attribute', () => {
+        setDOM(`<div id="test"><div class="math-block" data-math="\\frac{a}{b}">rendered content</div></div>`);
+        const adapter = new GeminiAdapter();
+        const el = document.getElementById('test');
+        const md = adapter._domToMarkdown(el);
+        expect(md).toContain('$$');
+        expect(md).toContain('\\frac{a}{b}');
+    });
+
+    test('_safeUrl encodes ( and ) to prevent markdown link breakage', () => {
+        const adapter = new GeminiAdapter();
+        expect(adapter._safeUrl('https://example.com/fn(x)')).toBe('https://example.com/fn%28x%29');
+    });
+
+    test('_domToMarkdown escapes ( and ) in link URLs', () => {
+        setDOM('<div id="test"><a href="https://example.com/np.array(data)">Link</a></div>');
+        const adapter = new GeminiAdapter();
+        const el = document.getElementById('test');
+        const md = adapter._domToMarkdown(el);
+        expect(md).toContain('[Link](https://example.com/np.array%28data%29)');
+    });
+
+    test('user message extracts LaTeX via DOM walking', () => {
+        setDOM(`<div id="test">
+            <user-query>
+                <div class="query-text">Show me <span class="math-inline" data-math="x^2"><span class="katex">x²</span></span> please</div>
+            </user-query>
+        </div>`);
+        const adapter = new GeminiAdapter();
+        const result = adapter.extract();
+        if (result.messages.length > 0) {
+            expect(result.messages[0].text).toContain('$x^2$');
+        }
+    });
+
+    test('_domToMarkdown handles figure elements with img', () => {
+        setDOM('<div id="test"><figure><img src="https://example.com/img.png" alt="Banana"><figcaption>A banana</figcaption></figure></div>');
+        const adapter = new GeminiAdapter();
+        const el = document.getElementById('test');
+        const md = adapter._domToMarkdown(el);
+        expect(md).toContain('![Banana](https://example.com/img.png)');
+    });
+
+    test('_domToMarkdown handles picture elements with img', () => {
+        setDOM('<div id="test"><picture><source srcset="https://example.com/large.webp"><img src="https://example.com/img.png" alt="Photo"></picture></div>');
+        const adapter = new GeminiAdapter();
+        const el = document.getElementById('test');
+        const md = adapter._domToMarkdown(el);
+        expect(md).toContain('![Photo](https://example.com/img.png)');
+    });
+
+    test('_domToMarkdown handles generated-image custom element', () => {
+        setDOM('<div id="test"><generated-image><img src="https://example.com/nano-banana.png" alt="Nano Banana"></generated-image></div>');
+        const adapter = new GeminiAdapter();
+        const el = document.getElementById('test');
+        const md = adapter._domToMarkdown(el);
+        expect(md).toContain('![Nano Banana](https://example.com/nano-banana.png)');
+    });
+
+    test('_domToMarkdown marks image placeholder when no src available', () => {
+        setDOM('<div id="test"><generated-image></generated-image></div>');
+        const adapter = new GeminiAdapter();
+        const el = document.getElementById('test');
+        const md = adapter._domToMarkdown(el);
+        expect(md).toContain('*[Image]*');
+    });
+});
+
+describe('ChatGPTAdapter URL escaping', () => {
+    test('_safeUrl encodes ( and ) to prevent markdown link breakage', () => {
+        const adapter = new ChatGPTAdapter();
+        expect(adapter._safeUrl('https://example.com/fn(x)')).toBe('https://example.com/fn%28x%29');
+    });
+
+    test('_domToMarkdown escapes ( and ) in link URLs', () => {
+        setDOM('<div id="test"><p><a href="https://example.com/rotate(90)">Link</a></p></div>');
+        const adapter = new ChatGPTAdapter();
+        const el = document.getElementById('test');
+        const md = adapter._domToMarkdown(el);
+        expect(md).toContain('[Link](https://example.com/rotate%2890%29)');
+    });
+
+    test('_domToMarkdown escapes ( and ) in image URLs', () => {
+        setDOM('<div id="test"><img src="https://example.com/img(2).jpg" alt="Photo"></div>');
+        const adapter = new ChatGPTAdapter();
+        const el = document.getElementById('test');
+        const md = adapter._domToMarkdown(el);
+        expect(md).toContain('![Photo](https://example.com/img%282%29.jpg)');
+    });
+
+    test('user messages use DOM walking to preserve LaTeX', () => {
+        setDOM(`<main>
+            <div data-message-author-role="user"><p>The value <span class="katex"><annotation encoding="application/x-tex">E=mc^2</annotation></span></p></div>
+        </main>`);
+        const adapter = new ChatGPTAdapter();
+        const result = adapter.extract();
+        expect(result.messages.length).toBe(1);
+        expect(result.messages[0].role).toBe('user');
+    });
 });
