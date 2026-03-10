@@ -14,7 +14,7 @@ import { renderMarkdown } from './markdown.js';
 /** Escape HTML special chars to prevent XSS when interpolating into innerHTML */
 function esc(str) {
     if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 export function initEvents() {
@@ -279,7 +279,7 @@ function handleSendMessage() {
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
             </button>
             </div>
-            <div class="msg-text"><div style="white-space: pre-wrap;">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div></div>`;
+            <div class="msg-text markdown-body">${renderMarkdown(text) || `<div style="white-space: pre-wrap;">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`}</div>`;
         contentArea.appendChild(bubble);
         contentArea.scrollTop = contentArea.scrollHeight;
     }
@@ -393,10 +393,9 @@ function buildMessagesHtml(messages, content) {
         return messages.map(m => {
             const roleClass = (m.role === 'user') ? 'msg-user' : 'msg-assistant';
             const rawText = (m.text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            // Use marked + katex for AI responses, plain text format for user to respect whitespace
-            const htmlContent = m.role === 'user'
-                ? m.text ? `<div style="white-space: pre-wrap;">${rawText}</div>` : ''
-                : renderMarkdown(m.text || '');
+            // Use marked + katex for both user and assistant messages
+            // so that user-typed LaTeX ($...$, $$...$$) and markdown also renders.
+            const htmlContent = renderMarkdown(m.text || '') || `<div style="white-space: pre-wrap;">${rawText}</div>`;
             // Encode raw text for copy button
             const copyData = btoa(unescape(encodeURIComponent(m.text || '')));
 
