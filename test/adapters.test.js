@@ -155,15 +155,33 @@ beforeAll(() => {
     ClaudeAdapter = mod.default || mod;
 });
 
-test('extracts user and assistant messages from Claude turn structure', () => {
+test('extracts user and assistant messages from Claude turn structure (current DOM)', () => {
     setDOM(`
         <main>
-            <div data-testid="user-human-turn-0">First user message</div>
-            <div><div class="font-claude-message">First assistant message</div></div>
+            <div data-test-render-count="2">
+                <div data-testid="user-message" class="font-user-message">First user message</div>
+            </div>
+            <div data-test-render-count="2">
+                <div class="font-claude-response">
+                    <div class="standard-markdown"><p>First assistant message</p></div>
+                </div>
+            </div>
         </main>`);
     const result = new ClaudeAdapter().extract();
     expect(result.messages[0]).toEqual({ role: 'user', text: 'First user message' });
     expect(result.messages[1]).toEqual({ role: 'assistant', text: 'First assistant message' });
+    expect(result.platform).toBe("claude");
+});
+
+test('extracts user and assistant messages from legacy Claude selectors (fallback)', () => {
+    setDOM(`
+        <main>
+            <div data-testid="user-human-turn-0">Legacy user message</div>
+            <div><div class="font-claude-message">Legacy assistant message</div></div>
+        </main>`);
+    const result = new ClaudeAdapter().extract();
+    expect(result.messages[0]).toEqual({ role: 'user', text: 'Legacy user message' });
+    expect(result.messages[1]).toEqual({ role: 'assistant', text: 'Legacy assistant message' });
     expect(result.platform).toBe("claude");
 });
 
@@ -392,7 +410,7 @@ describe('ClaudeAdapter.waitForResponse', () => {
         jest.useRealTimers();
     });
 
-    test('resolves when new .font-claude-message count increases', async () => {
+    test('resolves when new .font-claude-response count increases', async () => {
         jest.useFakeTimers();
         setDOM('<main></main>');
         const container = document.querySelector('main');
@@ -401,9 +419,12 @@ describe('ClaudeAdapter.waitForResponse', () => {
         const promise = adapter.waitForResponse(5000);
 
         jest.advanceTimersByTime(100);
+        const turn = document.createElement('div');
+        turn.setAttribute('data-test-render-count', '1');
         const msg = document.createElement('div');
-        msg.className = 'font-claude-message';
-        container.appendChild(msg);
+        msg.className = 'font-claude-response';
+        turn.appendChild(msg);
+        container.appendChild(turn);
         await Promise.resolve();
 
         jest.advanceTimersByTime(1500);
@@ -429,8 +450,23 @@ describe('ClaudeAdapter.prepareForExtract', () => {
     });
 });
 
-describe('ClaudeAdapter role detection (fixed)', () => {
-    test('detects user role via data-testid="user-human-turn" and keeps assistant as non-human sibling', () => {
+describe('ClaudeAdapter role detection (current DOM)', () => {
+    test('detects user and assistant in data-test-render-count turns', () => {
+        setDOM(`
+            <div data-test-render-count="2">
+                <div data-testid="user-message" class="font-user-message">Human message</div>
+            </div>
+            <div data-test-render-count="2">
+                <div class="font-claude-response">
+                    <div class="standard-markdown"><p>Assistant message</p></div>
+                </div>
+            </div>`);
+        const result = new ClaudeAdapter().extract();
+        expect(result.messages[0].role).toBe('user');
+        expect(result.messages[1].role).toBe('assistant');
+    });
+
+    test('detects user role via legacy data-testid="user-human-turn" (fallback)', () => {
         setDOM(`
             <div data-testid="user-human-turn-0">Human message</div>
             <div>
@@ -445,7 +481,7 @@ describe('ClaudeAdapter role detection (fixed)', () => {
         // A class name containing "user" in an unrelated ancestor should NOT make the message user
         setDOM(`
             <div class="user-content-wrapper">
-                <div class="font-claude-message">Assistant reply</div>
+                <div class="font-claude-response"><div class="standard-markdown"><p>Assistant reply</p></div></div>
             </div>`);
         const result = new ClaudeAdapter().extract();
         // "user-content-wrapper" should NOT trigger role=user because we no longer use [class*="user"]
@@ -602,7 +638,23 @@ describe('ClaudeAdapter DOM walking', () => {
         expect(adapter._extractText(userEl, 'user')).toBe('Plain user text');
     });
 
-    test('extract uses DOM walking for assistant messages', () => {
+    test('extract uses DOM walking for assistant messages (current DOM)', () => {
+        setDOM(`
+            <div data-test-render-count="2">
+                <div data-testid="user-message" class="font-user-message">User question</div>
+            </div>
+            <div data-test-render-count="2">
+                <div class="font-claude-response">
+                    <div class="standard-markdown"><p><strong>Bold</strong> and <code>code</code></p></div>
+                </div>
+            </div>`);
+        const result = new ClaudeAdapter().extract();
+        expect(result.messages[1].role).toBe('assistant');
+        expect(result.messages[1].text).toContain('**Bold**');
+        expect(result.messages[1].text).toContain('`code`');
+    });
+
+    test('extract uses DOM walking for assistant messages (legacy DOM)', () => {
         setDOM(`
             <main>
                 <div data-testid="user-human-turn-0">User question</div>

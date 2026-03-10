@@ -4,19 +4,31 @@
  * Extracts conversation content from Claude pages, converting rich HTML
  * (code blocks, LaTeX, tables, formatting) back to clean Markdown so
  * it renders correctly in the dashboard via marked + KaTeX.
+ *
+ * Updated 2026-03 to match current Claude.ai DOM structure:
+ *   - Turns wrapped in div[data-test-render-count]
+ *   - User messages: div[data-testid="user-message"]
+ *   - Assistant responses: div.font-claude-response > div.standard-markdown
+ *   - Title: button[data-testid="chat-title-button"] .truncate
+ *   - Input: div[data-testid="chat-input"] (ProseMirror)
+ *   - Streaming: div[data-is-streaming="true"]
  */
+
+// ─── Selector sets (primary = current Claude.ai, fallbacks = older layouts) ──
 const USER_SELECTORS = [
-    '[data-testid^="user-human-turn"]',
-    '[data-testid*="user-human-turn"]',
-    '[data-testid="user-message"]',
+    '[data-testid="user-message"]',           // current (2025-2026)
+    '[data-testid^="user-human-turn"]',       // legacy fallback
+    '[data-testid*="user-human-turn"]',       // legacy fallback
 ];
 
 const ASSISTANT_SELECTORS = [
-    '[data-testid^="assistant-turn"]',
-    '[data-testid*="assistant"]',
-    '[data-testid^="chat-message-text"]',
-    '[data-testid*="model-response"]',
-    '.font-claude-message',
+    '.font-claude-response',                  // current (2025-2026)
+    '.standard-markdown',                     // content inside response
+    '[data-testid^="assistant-turn"]',        // legacy fallback
+    '[data-testid*="assistant"]',             // legacy fallback
+    '[data-testid^="chat-message-text"]',     // legacy fallback
+    '[data-testid*="model-response"]',        // legacy fallback
+    '.font-claude-message',                   // legacy fallback
 ];
 
 const CONVERSATION_ROOT_SELECTORS = [
@@ -107,9 +119,10 @@ export default class ClaudeAdapter {
                 const className = (codeEl?.className || '').toLowerCase();
                 const langMatch = className.match(/language-([a-z0-9_+-]+)/);
                 if (langMatch) lang = langMatch[1];
-                // Try header bar for language label
+                // Try header bar for language label (Claude uses .text-text-500.font-small)
                 if (!lang) {
-                    const header = el.querySelector('[class*="code-header"], [class*="text-token"]');
+                    const header = el.closest('.relative.group\\/copy')?.querySelector('.text-text-500') ||
+                        el.querySelector('[class*="code-header"], [class*="text-token"]');
                     if (header) lang = (header.textContent || '').trim().split('\n')[0].trim().toLowerCase();
                 }
                 let cleanCode = code;
@@ -185,7 +198,7 @@ export default class ClaudeAdapter {
                         if (childTag === 'UL' || childTag === 'OL') {
                             this._walkNodes({ childNodes: [child] }, parts, listDepth + 1);
                         } else if (childTag === 'PRE' || childTag === 'TABLE' ||
-                                   childTag === 'BLOCKQUOTE') {
+                            childTag === 'BLOCKQUOTE') {
                             this._walkNodes({ childNodes: [child] }, parts, listDepth);
                         }
                     }
@@ -406,6 +419,10 @@ export default class ClaudeAdapter {
     }
 
     _assistantCount() {
+        // Primary: count turns that contain a .font-claude-response element
+        const turnBased = document.querySelectorAll('div[data-test-render-count] .font-claude-response');
+        if (turnBased.length > 0) return turnBased.length;
+        // Fallback: old approach
         const assistantNodes = this._dedupeTopLevel(
             this._queryAll(ASSISTANT_SELECTORS).filter(el => !this._isHumanNode(el))
         );
@@ -440,15 +457,75 @@ export default class ClaudeAdapter {
     }
 
     extract() {
-        // Title: try truncated title element, fall back to document.title
+        // ── Title ──
         let title = document.title || "Untitled";
+        // Primary: button[data-testid="chat-title-button"] .truncate (current Claude.ai)
         const titleEl =
+            document.querySelector('[data-testid="chat-title-button"] .truncate') ||
+            document.querySelector('[data-testid="chat-title-button"]') ||
             document.querySelector('div[class*="truncate"]') ||
             document.querySelector('[data-testid*="conversation-title"]') ||
             document.querySelector('h1');
         if (titleEl?.innerText?.trim()) title = titleEl.innerText.trim();
 
-        // Strategy 0: collect user + assistant nodes via resilient selector sets,
+        // ── Strategy 0 (Primary): Turn-based extraction via data-test-render-count ──
+        // Each turn is a div[data-test-render-count] containing either a
+        // user message ([data-testid="user-message"]) or an assistant response
+        // (.font-claude-response with .standard-markdown content inside).
+        const turns = document.querySelectorAll('div[data-test-render-count]');
+        if (turns.length > 0) {
+            const messages = [];
+            const lines = [];
+
+            for (const turn of turns) {
+                // Check for user message
+                const userMsg = turn.querySelector('[data-testid="user-message"]');
+                if (userMsg) {
+                    const text = this._extractText(userMsg, 'user');
+                    if (text) {
+                        messages.push({ role: 'user', text });
+                        lines.push(`[USER]:\n${text}`);
+                    }
+                    continue;
+                }
+
+                // Check for assistant response
+                const assistantResponse = turn.querySelector('.font-claude-response');
+                if (assistantResponse) {
+                    // Prefer .standard-markdown content blocks for clean extraction
+                    const markdownBlocks = assistantResponse.querySelectorAll('.standard-markdown');
+                    let text = '';
+                    if (markdownBlocks.length > 0) {
+                        const blockTexts = [];
+                        for (const block of markdownBlocks) {
+                            const blockMd = this._domToMarkdown(block);
+                            if (blockMd) blockTexts.push(blockMd);
+                        }
+                        text = blockTexts.join('\n\n');
+                    }
+                    // Fallback: extract from the entire response container
+                    if (!text) {
+                        text = this._extractText(assistantResponse, 'assistant');
+                    }
+                    if (text) {
+                        messages.push({ role: 'assistant', text });
+                        lines.push(`[ASSISTANT]:\n${text}`);
+                    }
+                }
+            }
+
+            if (messages.length && messages.some(m => m.role === 'assistant')) {
+                return {
+                    title,
+                    content: lines.join('\n\n---\n\n'),
+                    platform: "claude",
+                    messages
+                };
+            }
+        }
+
+        // ── Strategy 1: Selector-based extraction (fallback) ──
+        // Collect user + assistant nodes via resilient selector sets,
         // then merge by document order.
         const humanTurns = this._dedupeTopLevel(this._queryAll(USER_SELECTORS));
         const assistantCandidates = this._dedupeTopLevel(
@@ -483,8 +560,7 @@ export default class ClaudeAdapter {
             }
         }
 
-        // Strategy 1: walk direct children of conversation root and infer role
-        // from descendant selectors, with alternating fallback.
+        // ── Strategy 2: Walk direct children of conversation root ──
         const conversationRoot = this._findConversationRoot();
         if (conversationRoot?.children?.length) {
             const messages = [];
@@ -550,7 +626,9 @@ export default class ClaudeAdapter {
         if (!text?.trim()) throw new Error("Cannot send empty message.");
 
         // Claude uses a ProseMirror contenteditable div
+        // Primary: data-testid="chat-input" (current Claude.ai)
         const inputEl =
+            document.querySelector('[data-testid="chat-input"]') ||
             document.querySelector('div.ProseMirror[contenteditable="true"]') ||
             document.querySelector('[contenteditable="true"][role="textbox"]') ||
             document.querySelector('[contenteditable="true"]');
@@ -586,7 +664,8 @@ export default class ClaudeAdapter {
 
     /**
      * Wait for Claude to finish streaming its response.
-     * Resolves when the send button re-appears, DOM mutations settle for 2 s, or on timeout.
+     * Resolves when streaming indicator disappears, send button re-appears,
+     * DOM mutations settle for 2 s, or on timeout.
      * @param {number} maxWaitMs
      */
     waitForResponse(maxWaitMs = 60000) {
@@ -600,6 +679,7 @@ export default class ClaudeAdapter {
 
             const target =
                 document.querySelector('[data-testid="conversation-content"]') ||
+                document.querySelector('[data-autoscroll-container]') ||
                 document.querySelector('main') ||
                 document.body;
 
@@ -622,6 +702,16 @@ export default class ClaudeAdapter {
                 if (currentCount > startCount && !settleTimer && mutationSeen) {
                     settleTimer = setTimeout(() => finish(), SETTLE_DELAY);
                 }
+
+                // Check streaming status via data-is-streaming attribute (current Claude.ai)
+                const streamingEl = document.querySelector('[data-is-streaming="true"]');
+                if (!streamingEl && mutationSeen && currentCount > startCount) {
+                    console.log('[REXOW] Claude waitForResponse: streaming complete');
+                    sendButtonReady = true;
+                    finish();
+                    return;
+                }
+
                 // Claude re-enables the send button once streaming is complete
                 const sendBtn =
                     document.querySelector('button[aria-label="Send Message"]:not([disabled])') ||
@@ -649,7 +739,9 @@ export default class ClaudeAdapter {
      * Scroll the conversation to the bottom so the latest messages are rendered.
      */
     prepareForExtract() {
+        // Primary: autoscroll container (current Claude.ai)
         const container =
+            document.querySelector('[data-autoscroll-container]') ||
             document.querySelector('[data-testid="conversation-content"]') ||
             document.querySelector('[class*="conversation"]') ||
             document.querySelector('main');
