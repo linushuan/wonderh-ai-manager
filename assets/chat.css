@@ -279,6 +279,127 @@
     color: #34d399;
     border-color: rgba(52, 211, 153, 0.3);
 }
+/* --- File Attach Button --- */
+.btn-attach {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    margin-bottom: 6px;
+}
+
+.btn-attach:hover {
+    color: #a5b4fc;
+    border-color: #6366f1;
+    background: rgba(99, 102, 241, 0.12);
+}
+
+.btn-attach.has-files {
+    color: #6366f1;
+    border-color: #6366f1;
+    background: rgba(99, 102, 241, 0.15);
+}
+
+/* --- File Preview Container --- */
+.file-preview-container {
+    display: none;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 20px 0;
+    border-top: 1px solid var(--border);
+    background: var(--bg-sidebar);
+}
+
+.file-preview-container.has-files {
+    display: flex;
+}
+
+/* --- File Chips --- */
+.file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(99, 102, 241, 0.12);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    border-radius: 6px;
+    padding: 4px 8px 4px 10px;
+    font-size: 12px;
+    color: #c7d2fe;
+    max-width: 200px;
+    animation: chipIn 0.2s ease-out;
+}
+
+@keyframes chipIn {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.file-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 120px;
+}
+
+.file-chip-size {
+    color: var(--text-muted);
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+.file-chip-remove {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+
+.file-chip-remove:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+}
+
+/* --- File names in message bubbles --- */
+.msg-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+
+.msg-file-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: #a5b4fc;
+}
+
+.msg-file-tag svg {
+    flex-shrink: 0;
+}
+
 @media (max-width: 480px) {
   .chat-send-bar {
     border-radius: 0;

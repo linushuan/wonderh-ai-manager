@@ -172,7 +172,7 @@ export default class ChatGPTAdapter {
                         if (childTag === 'UL' || childTag === 'OL') {
                             this._walkNodes({ childNodes: [child] }, parts, listDepth + 1);
                         } else if (childTag === 'PRE' || childTag === 'TABLE' ||
-                                   childTag === 'BLOCKQUOTE') {
+                            childTag === 'BLOCKQUOTE') {
                             this._walkNodes({ childNodes: [child] }, parts, listDepth);
                         }
                     }
@@ -362,7 +362,7 @@ export default class ChatGPTAdapter {
         }
 
         const messages = [];
-        const lines    = [];
+        const lines = [];
         msgNodes.forEach(node => {
             const role = node.getAttribute('data-message-author-role') || 'unknown';
 
@@ -388,6 +388,68 @@ export default class ChatGPTAdapter {
             platform: "chatgpt",
             messages
         };
+    }
+
+    /**
+     * Upload files to ChatGPT by injecting into the file input or via drag-and-drop.
+     * @param {Array<{name: string, type: string, dataUrl: string}>} files
+     */
+    async uploadFiles(files) {
+        if (!files?.length) return;
+
+        // Convert data URLs to File objects
+        const fileObjects = [];
+        for (const f of files) {
+            const resp = await fetch(f.dataUrl);
+            const blob = await resp.blob();
+            fileObjects.push(new File([blob], f.name, { type: f.type }));
+        }
+
+        // Strategy 1: Find file input (may need to click attach button first)
+        let input = document.querySelector('input[type="file"]');
+
+        if (!input) {
+            const attachBtn =
+                document.querySelector('button[aria-label*="Attach"]') ||
+                document.querySelector('button[aria-label*="attach"]') ||
+                document.querySelector('button[aria-label*="Upload"]') ||
+                document.querySelector('button[id="upload-btn"]') ||
+                document.querySelector('[data-testid="upload-button"]') ||
+                document.querySelector('button[aria-label*="file"]');
+            if (attachBtn) {
+                attachBtn.click();
+                await new Promise(r => setTimeout(r, 800));
+                input = document.querySelector('input[type="file"]');
+            }
+        }
+
+        if (input) {
+            const dt = new DataTransfer();
+            fileObjects.forEach(f => dt.items.add(f));
+            input.files = dt.files;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            console.log(`[REXOW ChatGPT] Uploaded ${files.length} file(s) via file input`);
+            return;
+        }
+
+        // Strategy 2: Drag-and-drop on the editor area
+        const dropTarget =
+            document.querySelector('#prompt-textarea') ||
+            document.querySelector('div[contenteditable="true"]') ||
+            document.querySelector('textarea') ||
+            document.querySelector('main');
+
+        if (dropTarget) {
+            const dt = new DataTransfer();
+            fileObjects.forEach(f => dt.items.add(f));
+            dropTarget.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            dropTarget.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            dropTarget.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            console.log(`[REXOW ChatGPT] Uploaded ${files.length} file(s) via drag-and-drop`);
+            return;
+        }
+
+        throw new Error("ChatGPT: could not find file input or drop target.");
     }
 
     /**

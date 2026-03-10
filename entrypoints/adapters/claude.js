@@ -618,6 +618,78 @@ export default class ClaudeAdapter {
     }
 
     /**
+     * Upload files to Claude by injecting into the file input or via drag-and-drop.
+     * @param {Array<{name: string, type: string, dataUrl: string}>} files
+     */
+    async uploadFiles(files) {
+        if (!files?.length) return;
+
+        // Convert data URLs to File objects
+        const fileObjects = [];
+        for (const f of files) {
+            const resp = await fetch(f.dataUrl);
+            const blob = await resp.blob();
+            fileObjects.push(new File([blob], f.name, { type: f.type }));
+        }
+
+        // Strategy 1: Find file input (may need to click attach button first)
+        let input = document.querySelector('input[type="file"]');
+
+        if (!input) {
+            const attachBtn =
+                document.querySelector('[data-testid="input-menu-trigger"]') ||
+                document.querySelector('button[aria-label*="Attach"]') ||
+                document.querySelector('button[aria-label*="attach"]') ||
+                document.querySelector('button[aria-label*="Upload"]') ||
+                document.querySelector('button[data-testid="file-upload"]');
+            if (attachBtn) {
+                attachBtn.click();
+                await new Promise(r => setTimeout(r, 800));
+                // After menu opens, look for "upload from computer" or similar
+                const uploadOption = document.querySelector('[data-testid="file-upload"]') ||
+                    document.querySelector('input[type="file"]');
+                if (uploadOption?.tagName === 'INPUT') {
+                    input = uploadOption;
+                } else if (uploadOption) {
+                    uploadOption.click();
+                    await new Promise(r => setTimeout(r, 500));
+                    input = document.querySelector('input[type="file"]');
+                } else {
+                    input = document.querySelector('input[type="file"]');
+                }
+            }
+        }
+
+        if (input) {
+            const dt = new DataTransfer();
+            fileObjects.forEach(f => dt.items.add(f));
+            input.files = dt.files;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            console.log(`[REXOW Claude] Uploaded ${files.length} file(s) via file input`);
+            return;
+        }
+
+        // Strategy 2: Drag-and-drop on the editor area
+        const dropTarget =
+            document.querySelector('[data-testid="chat-input"]') ||
+            document.querySelector('div.ProseMirror[contenteditable="true"]') ||
+            document.querySelector('[contenteditable="true"]') ||
+            document.querySelector('main');
+
+        if (dropTarget) {
+            const dt = new DataTransfer();
+            fileObjects.forEach(f => dt.items.add(f));
+            dropTarget.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            dropTarget.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            dropTarget.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            console.log(`[REXOW Claude] Uploaded ${files.length} file(s) via drag-and-drop`);
+            return;
+        }
+
+        throw new Error("Claude: could not find file input or drop target.");
+    }
+
+    /**
      * Send a message to Claude by injecting text into the ProseMirror editor.
      * Claude uses a contenteditable div (ProseMirror) as its input field.
      * @param {string} text

@@ -181,8 +181,8 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
         return true;
 
     } else if (req.type === "SEND_ONLY") {
-        if (!req.url || !req.text) {
-            sendResponse({ status: "error", msg: "Missing url or text." });
+        if (!req.url || (!req.text && !req.files?.length)) {
+            sendResponse({ status: "error", msg: "Missing url or content (text/files)." });
             return true;
         }
         chrome.tabs.query({}, (tabs) => {
@@ -192,7 +192,9 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
                 sendResponse({ status: "error", msg: "No matching tab found", detail: `Open "${req.url}" in a tab first.` });
                 return;
             }
-            chrome.tabs.sendMessage(target.id, { type: "SEND_ONLY", text: req.text }, (res) => {
+            const msg = { type: "SEND_ONLY", text: req.text };
+            if (req.files?.length) msg.files = req.files;
+            chrome.tabs.sendMessage(target.id, msg, (res) => {
                 const err = chrome.runtime.lastError;
                 if (err) { sendResponse({ status: "error", msg: err.message }); return; }
                 if (!res) { sendResponse({ status: "error", msg: "No response from content script." }); return; }

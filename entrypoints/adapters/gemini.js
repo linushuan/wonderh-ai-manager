@@ -212,9 +212,9 @@ export default class GeminiAdapter {
                         if (childTag === 'UL' || childTag === 'OL') {
                             this._walkNodes({ childNodes: [child] }, parts, listDepth + 1);
                         } else if (childTag === 'CODE-BLOCK' || child.classList?.contains('code-block') ||
-                                   childTag === 'PRE' || childTag === 'TABLE' || childTag === 'TABLE-BLOCK' ||
-                                   childTag === 'BLOCKQUOTE' || child.classList?.contains('math-block') ||
-                                   child.querySelector('code-block, pre, table, table-block, blockquote, ul, ol, .math-block')) {
+                            childTag === 'PRE' || childTag === 'TABLE' || childTag === 'TABLE-BLOCK' ||
+                            childTag === 'BLOCKQUOTE' || child.classList?.contains('math-block') ||
+                            child.querySelector('code-block, pre, table, table-block, blockquote, ul, ol, .math-block')) {
                             this._walkNodes({ childNodes: [child] }, parts, listDepth);
                         }
                     }
@@ -356,7 +356,7 @@ export default class GeminiAdapter {
                 // Try to find an <img> inside the custom element
                 const imgEl = el.querySelector('img');
                 const src = imgEl?.getAttribute('src') || imgEl?.getAttribute('data-src') ||
-                            el.getAttribute('src') || el.getAttribute('data-src') || '';
+                    el.getAttribute('src') || el.getAttribute('data-src') || '';
                 const alt = imgEl?.getAttribute('alt') || el.getAttribute('alt') || 'Generated Image';
                 if (src) {
                     parts.push(this._imageMarkdown(src, alt));
@@ -640,6 +640,71 @@ export default class GeminiAdapter {
         }
 
         return { title, content: bodyText, platform: "gemini", messages: [] };
+    }
+
+    /**
+     * Upload files to Gemini by injecting into the file input or via drag-and-drop.
+     * @param {Array<{name: string, type: string, dataUrl: string}>} files
+     */
+    async uploadFiles(files) {
+        if (!files?.length) return;
+
+        // Convert data URLs to File objects
+        const fileObjects = [];
+        for (const f of files) {
+            const resp = await fetch(f.dataUrl);
+            const blob = await resp.blob();
+            fileObjects.push(new File([blob], f.name, { type: f.type }));
+        }
+
+        // Strategy 1: Find file input (may need to click attach button first)
+        let input = document.querySelector('input[type="file"]');
+
+        if (!input) {
+            const attachBtn =
+                document.querySelector('button[aria-label*="Upload"]') ||
+                document.querySelector('button[aria-label*="upload"]') ||
+                document.querySelector('button[aria-label*="Attach"]') ||
+                document.querySelector('button[aria-label*="attach"]') ||
+                document.querySelector('button[aria-label*="Add file"]') ||
+                document.querySelector('button[aria-label*="file"]') ||
+                document.querySelector('.upload-button');
+            if (attachBtn) {
+                attachBtn.click();
+                await new Promise(r => setTimeout(r, 800));
+                input = document.querySelector('input[type="file"]');
+            }
+        }
+
+        if (input) {
+            const dt = new DataTransfer();
+            fileObjects.forEach(f => dt.items.add(f));
+            input.files = dt.files;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            console.log(`[REXOW Gemini] Uploaded ${files.length} file(s) via file input`);
+            return;
+        }
+
+        // Strategy 2: Drag-and-drop on the editor area
+        const dropTarget =
+            document.querySelector('rich-textarea .ql-editor') ||
+            document.querySelector('.ql-editor[contenteditable="true"]') ||
+            document.querySelector('[contenteditable="true"][aria-label]') ||
+            document.querySelector('.input-area') ||
+            document.querySelector('main') ||
+            document.body;
+
+        if (dropTarget) {
+            const dt = new DataTransfer();
+            fileObjects.forEach(f => dt.items.add(f));
+            dropTarget.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            dropTarget.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            dropTarget.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+            console.log(`[REXOW Gemini] Uploaded ${files.length} file(s) via drag-and-drop`);
+            return;
+        }
+
+        throw new Error("Gemini: could not find file input or drop target.");
     }
 
     /**

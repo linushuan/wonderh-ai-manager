@@ -18,7 +18,7 @@ A **local-first browser extension** (Chrome & Firefox) for organising, syncing, 
 |---|---|
 | Google Gemini | `gemini.google.com` |
 | ChatGPT | `chatgpt.com` |
-| Claude(not yet) | `claude.ai` |
+| Claude| `claude.ai` |
 
 ## Installation
 
@@ -54,46 +54,7 @@ This writes the native messaging host manifest for Chrome and Firefox. **Require
 
 ## Configuration
 
-### API Key (for Generate Summary)
+### API Key (for Generate Summary) (not yet)
 
 Enter your OpenAI API key (starts with `sk-`) via the Settings panel. Stored in `chrome.storage.local` only — never written to disk.
-
-## Project Structure
-
-```
-wonderh-ai-manager/
-├── manifest.json          # Extension manifest (MV3)
-├── install.sh             # Native host registration
-├── assets/
-│   ├── dashboard.css      # CSS import hub
-│   ├── base.css           # Variables, reset, layout
-│   ├── sidebar.css        # Sidebar & tree
-│   ├── workspace.css      # Welcome & folder views
-│   ├── chat.css           # Chat UI & messages
-│   ├── markdown.css       # Markdown & KaTeX styles
-│   ├── panel.css          # Right panel & shared
-│   └── lib/               # Bundled marked + katex
-├── entrypoints/
-│   ├── background.js      # Service worker
-│   ├── content_extractor.js
-│   ├── dashboard.html
-│   ├── dashboard/
-│   │   ├── main.js        # Entry point
-│   │   ├── store.js       # State & persistence
-│   │   ├── events.js      # Event delegation
-│   │   ├── view.js        # View rendering
-│   │   ├── tree.js        # Sidebar tree
-│   │   ├── markdown.js    # Markdown renderer
-│   │   ├── colors.js      # Palette assignment
-│   │   ├── icons.js       # SVG factory
-│   │   ├── api.js         # OpenAI summary API
-│   │   └── init.js        # Background image
-│   └── adapters/
-│       ├── gemini.js
-│       ├── chatgpt.js
-│       └── claude.js
-├── test/                  # Jest test suites
-└── native-host/
-    └── wonderh_host.py
-```
 

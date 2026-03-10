@@ -66,8 +66,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     return;
                 }
 
-                // Send the message
-                adapter.sendMessage(request.text);
+                // Upload files first if present
+                if (request.files?.length && typeof adapter.uploadFiles === 'function') {
+                    console.log('[REXOW] Uploading', request.files.length, 'file(s)...');
+                    await adapter.uploadFiles(request.files);
+                    // Wait for platform UI to process uploads
+                    await new Promise(r => setTimeout(r, 1500));
+                    console.log('[REXOW] Files uploaded, sending message...');
+                }
+
+                // Send the text message (may be empty if only files)
+                if (request.text?.trim()) {
+                    adapter.sendMessage(request.text);
+                } else if (request.files?.length) {
+                    // Files only — trigger send without text
+                    // Some platforms need just Enter press after file upload
+                    setTimeout(() => {
+                        const sendBtn =
+                            document.querySelector('button[data-testid="send-button"]') ||
+                            document.querySelector('button[aria-label*="Send"]') ||
+                            document.querySelector('button[aria-label*="send"]') ||
+                            document.querySelector('.send-button');
+                        if (sendBtn && !sendBtn.disabled) sendBtn.click();
+                    }, 200);
+                }
 
                 // SEND_ONLY: return immediately after sending (dashboard will poll)
                 if (request.type === "SEND_ONLY") {

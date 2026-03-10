@@ -217,7 +217,7 @@ test('SEND_ONLY forwards message and returns immediately', () => {
 test('SEND_ONLY returns error when url or text missing', () => {
     const sendResponse = jest.fn();
     global.chrome.runtime.onMessage._fire({ type: "SEND_ONLY", url: "https://chatgpt.com" }, {}, sendResponse);
-    expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ status: "error", msg: "Missing url or text." }));
+    expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ status: "error", msg: "Missing url or content (text/files)." }));
 });
 
 // ── SWITCH_TO_REXOW & SWITCH_TO_AI_TAB ───────────────────────

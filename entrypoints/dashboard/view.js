@@ -10,7 +10,7 @@ import { renderMarkdown } from './markdown.js';
 /** Escape HTML special chars to prevent XSS when interpolating into innerHTML */
 function esc(str) {
     if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 export function renderMainView(id, type) {
@@ -85,7 +85,8 @@ export function renderChatView(chat) {
     placeholder="Paste AI conversation URL..."
     value="${esc(chat.url)}"
     />
-    <button id="btnOpenUrl" class="btn-open-url" title="Open in new tab">OPEN</button>
+    <button id="btnGoToUrlTab" class="btn-open-url" title="Switch to AI Tab">GO TO CHAT</button>
+    <button id="btnOpenUrl" class="btn-xs" title="Open in new tab">OPEN NEW</button>
     <button id="btnFetchContent" class="btn-xs">SYNC CONTENT</button>
     </div>
 
@@ -93,7 +94,13 @@ export function renderChatView(chat) {
     ${renderMessagesHtml(chat.messages, chat.content)}
     </div>
 
+    <div id="filePreviewContainer" class="file-preview-container"></div>
+
     <div class="chat-send-bar">
+    <input type="file" id="fileUploadInput" multiple hidden>
+    <button id="btnAttachFile" class="btn-attach" title="Attach files" style="display: none;">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+    </button>
     <textarea id="sendMessageInput" rows="2" placeholder="Type a message to send to AI...  (Shift+Enter for new line)" autocomplete="off"></textarea>
     <button id="btnSendMessage" class="btn-send" title="Send message">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>

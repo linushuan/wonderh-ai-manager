@@ -17,6 +17,49 @@ function esc(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// ── File attachment state ─────────────────────────────────────
+let attachedFiles = []; // Array of {name, type, size, dataUrl}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + 'B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + 'MB';
+}
+
+function renderFileChips() {
+    const container = document.getElementById('filePreviewContainer');
+    const attachBtn = document.getElementById('btnAttachFile');
+    if (!container) return;
+
+    if (attachedFiles.length === 0) {
+        container.innerHTML = '';
+        container.classList.remove('has-files');
+        if (attachBtn) attachBtn.classList.remove('has-files');
+        return;
+    }
+
+    container.classList.add('has-files');
+    if (attachBtn) attachBtn.classList.add('has-files');
+
+    container.innerHTML = attachedFiles.map((f, i) => `
+        <div class="file-chip" data-index="${i}">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+            <span class="file-chip-name" title="${esc(f.name)}">${esc(f.name)}</span>
+            <span class="file-chip-size">${formatFileSize(f.size)}</span>
+            <button class="file-chip-remove" data-index="${i}" title="Remove">
+                <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </div>
+    `).join('');
+}
+
+function clearAttachedFiles() {
+    attachedFiles = [];
+    renderFileChips();
+    const fileInput = document.getElementById('fileUploadInput');
+    if (fileInput) fileInput.value = '';
+}
+
 export function initEvents() {
 
     // ── Brand click → welcome ─────────────────────────────────
@@ -165,6 +208,19 @@ export function initEvents() {
         });
     });
 
+    // ── GO TO TAB button ─────────────────────────────────────
+    document.getElementById('contentView').addEventListener('click', (e) => {
+        if (e.target.id !== 'btnGoToUrlTab') return;
+        const url = document.getElementById('urlInput')?.value?.trim();
+        if (!url) { alert('Please enter a URL first.'); return; }
+        try {
+            new URL(url);
+            chrome.runtime.sendMessage({ type: "SWITCH_TO_AI_TAB", url });
+        } catch (_) {
+            alert('Invalid URL format.');
+        }
+    });
+
     // ── OPEN URL button ──────────────────────────────────────
     document.getElementById('contentView').addEventListener('click', (e) => {
         if (e.target.id !== 'btnOpenUrl') return;
@@ -246,6 +302,64 @@ export function initEvents() {
             console.warn('[REXOW] Copy failed');
         }
     });
+
+    // ── File attach button ───────────────────────────────────
+    document.getElementById('contentView').addEventListener('click', (e) => {
+        if (e.target.closest('#btnAttachFile')) {
+            const fileInput = document.getElementById('fileUploadInput');
+            if (fileInput) fileInput.click();
+        }
+    });
+
+    // ── File input change ────────────────────────────────────
+    document.getElementById('contentView').addEventListener('change', (e) => {
+        if (e.target.id !== 'fileUploadInput') return;
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+
+        // Check total size (25MB limit)
+        const MAX_TOTAL = 25 * 1024 * 1024;
+        const currentTotal = attachedFiles.reduce((s, f) => s + f.size, 0);
+        const newTotal = files.reduce((s, f) => s + f.size, 0);
+        if (currentTotal + newTotal > MAX_TOTAL) {
+            alert(`Total file size exceeds 25MB limit. Current: ${formatFileSize(currentTotal)}, New: ${formatFileSize(newTotal)}`);
+            e.target.value = '';
+            return;
+        }
+
+        // Read files as data URLs
+        let remaining = files.length;
+        files.forEach(file => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                attachedFiles.push({
+                    name: file.name,
+                    type: file.type || 'application/octet-stream',
+                    size: file.size,
+                    dataUrl: reader.result
+                });
+                remaining--;
+                if (remaining === 0) renderFileChips();
+            };
+            reader.onerror = () => {
+                remaining--;
+                console.warn('[REXOW] Failed to read file:', file.name);
+                if (remaining === 0) renderFileChips();
+            };
+            reader.readAsDataURL(file);
+        });
+    });
+
+    // ── File chip remove button ──────────────────────────────
+    document.getElementById('contentView').addEventListener('click', (e) => {
+        const removeBtn = e.target.closest('.file-chip-remove');
+        if (!removeBtn) return;
+        const idx = parseInt(removeBtn.dataset.index, 10);
+        if (!isNaN(idx) && idx >= 0 && idx < attachedFiles.length) {
+            attachedFiles.splice(idx, 1);
+            renderFileChips();
+        }
+    });
 }
 
 function handleSendMessage() {
@@ -257,14 +371,19 @@ function handleSendMessage() {
     if (!url) { showSyncError("Please set a URL first.", ""); return; }
 
     const input = document.getElementById('sendMessageInput');
-    const text = input?.value?.trim();
-    if (!text) return;
+    const text = input?.value?.trim() || '';
+    const filesToSend = [...attachedFiles]; // snapshot before clearing
+
+    // Need either text or files
+    if (!text && filesToSend.length === 0) return;
 
     input.value = '';
     // Reset textarea height
     if (input.tagName === 'TEXTAREA') {
         input.style.height = 'auto';
     }
+    // Clear attached files immediately
+    clearAttachedFiles();
 
     // Optimistically add user message bubble
     const contentArea = document.getElementById('chatContentArea');
@@ -272,6 +391,18 @@ function handleSendMessage() {
         const copyData = btoa(unescape(encodeURIComponent(text)));
         const bubble = document.createElement('div');
         bubble.className = 'msg-bubble msg-user';
+
+        // Build file tags HTML
+        const fileTagsHtml = filesToSend.length > 0
+            ? `<div class="msg-files">${filesToSend.map(f =>
+                `<span class="msg-file-tag"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>${esc(f.name)}</span>`
+            ).join('')}</div>`
+            : '';
+
+        const textHtml = text
+            ? (renderMarkdown(text) || `<div style="white-space: pre-wrap;">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`)
+            : '';
+
         bubble.innerHTML = `
             <div class="msg-header">
             <div class="msg-role">USER</div>
@@ -279,7 +410,7 @@ function handleSendMessage() {
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
             </button>
             </div>
-            <div class="msg-text markdown-body">${renderMarkdown(text) || `<div style="white-space: pre-wrap;">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`}</div>`;
+            <div class="msg-text markdown-body">${fileTagsHtml}${textHtml}</div>`;
         contentArea.appendChild(bubble);
         contentArea.scrollTop = contentArea.scrollHeight;
     }
@@ -290,8 +421,15 @@ function handleSendMessage() {
     if (sendBtn) sendBtn.disabled = true;
     if (syncBtn) { syncBtn.innerText = "Sending..."; syncBtn.disabled = true; }
 
+    // Build the send payload — include files if present
+    const payload = { type: "SEND_ONLY", url, text };
+    if (filesToSend.length > 0) {
+        // Send file metadata (name, type, dataUrl) — content script reconstructs File objects
+        payload.files = filesToSend.map(f => ({ name: f.name, type: f.type, dataUrl: f.dataUrl }));
+    }
+
     // Step 1: Send the message (fast, returns immediately)
-    chrome.runtime.sendMessage({ type: "SEND_ONLY", url, text }, (sendRes) => {
+    chrome.runtime.sendMessage(payload, (sendRes) => {
         void chrome.runtime.lastError;
         if (!sendRes || sendRes.status !== "success") {
             const msg = sendRes?.msg || "Failed to send message.";
