@@ -1,6 +1,6 @@
 {
   "name": "wonderh-ai-manager",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "REXOW Local-First AI Manager",
   "scripts": {
     "test": "jest --coverage",
