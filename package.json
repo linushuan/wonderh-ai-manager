@@ -1,6 +1,6 @@
 {
   "name": "wonderh-ai-manager",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "REXOW Local-First AI Manager",
   "scripts": {
     "test": "jest --coverage",
@@ -8,7 +8,7 @@
     "test:unit": "jest test",
     "test:integration": "jest test/integration",
     "build:firefox": "web-ext build --overwrite-dest",
-    "sign:firefox": "web-ext sign --api-key=$AMO_JWT_ISSUER --api-secret=$AMO_JWT_SECRET"
+    "sign:firefox": "web-ext sign --api-key=$AMO_JWT_ISSUER --api-secret=$AMO_JWT_SECRET --channel=unlisted"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",

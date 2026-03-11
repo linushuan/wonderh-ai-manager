@@ -6,6 +6,8 @@ coverage/
 
 # Build artifacts
 *.json_bak
+.amo-upload-uuid
+web-ext-artifacts/
 
 # System
 .DS_Store
