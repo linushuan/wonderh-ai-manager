@@ -39,6 +39,21 @@ export function initPort(onLoaded) {
                     if (_onDataLoaded) _onDataLoaded(appData);
                 } else if (msg.type === "LOAD_ERROR") {
                     console.error("[REXOW STORE] LOAD_ERROR:", msg.msg);
+                } else if (msg.type === "UPDATE_CHAT_URL") {
+                    const { chatId, url } = msg.payload;
+                    if (chatId && url) {
+                        const chat = appData.chats.find(c => c.id === chatId);
+                        if (chat && chat.url !== url) {
+                            chat.url = url;
+                            sync();
+
+                            // Update the UI if this chat is currently open
+                            if (currentSelectedId === chatId) {
+                                const urlInput = document.getElementById('urlInput');
+                                if (urlInput) urlInput.value = url;
+                            }
+                        }
+                    }
                 }
             });
 
@@ -64,9 +79,9 @@ export function initPort(onLoaded) {
 
 // ─── Getters ────────────────────────────────────────────────
 
-export function getAppData()        { return appData; }
-export function getCurrentId()      { return currentSelectedId; }
-export function getExpandedFolders(){ return expandedFolders; }
+export function getAppData() { return appData; }
+export function getCurrentId() { return currentSelectedId; }
+export function getExpandedFolders() { return expandedFolders; }
 
 // ─── Setters ────────────────────────────────────────────────
 
@@ -77,7 +92,7 @@ export function setAppData(data) {
     }
     appData = data;
     if (!Array.isArray(appData.folders)) appData.folders = [];
-    if (!Array.isArray(appData.chats))   appData.chats   = [];
+    if (!Array.isArray(appData.chats)) appData.chats = [];
 }
 
 export function setCurrentId(id) { currentSelectedId = id; }
@@ -108,11 +123,11 @@ export function deleteFolder(id) {
         const next = [];
         for (const pid of frontier)
             appData.folders.filter(f => f.parentId === pid)
-            .forEach(f => { toDelete.add(f.id); next.push(f.id); });
+                .forEach(f => { toDelete.add(f.id); next.push(f.id); });
         frontier = next;
     }
     appData.folders = appData.folders.filter(f => !toDelete.has(f.id));
-    appData.chats   = appData.chats.filter(c => !toDelete.has(c.parentId));
+    appData.chats = appData.chats.filter(c => !toDelete.has(c.parentId));
     sync();
 }
 
@@ -120,7 +135,7 @@ export function deleteFolder(id) {
 
 export function addChat(name, parentId) {
     if (!name?.trim()) throw new Error("Chat name cannot be empty.");
-    if (!parentId)     throw new Error("Chat must belong to a folder.");
+    if (!parentId) throw new Error("Chat must belong to a folder.");
     const chat = {
         id: crypto.randomUUID(), name: name.trim(), parentId,
         url: "", platform: null, notes: "", summary: "", content: "", messages: []

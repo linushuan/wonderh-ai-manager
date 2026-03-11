@@ -360,6 +360,39 @@ export function initEvents() {
             renderFileChips();
         }
     });
+
+    // ── AI Provider Selection (Start New Chat) ────────────────
+    document.getElementById('contentView').addEventListener('click', (e) => {
+        const providerBtn = e.target.closest('.btn-provider');
+        if (!providerBtn) return;
+
+        const provider = providerBtn.dataset.provider;
+        const id = getCurrentId();
+        if (!id) return;
+
+        let newChatUrl = '';
+        if (provider === 'chatgpt') newChatUrl = 'https://chatgpt.com/';
+        else if (provider === 'claude') newChatUrl = 'https://claude.ai/new';
+        else if (provider === 'gemini') newChatUrl = 'https://gemini.google.com/app';
+        else return;
+
+        // Open the URL in a new tab
+        chrome.tabs.create({ url: newChatUrl }, (tab) => {
+            if (!tab || !tab.id) return;
+
+            // Send message to background to monitor this tab's URL
+            chrome.runtime.sendMessage({
+                type: "MONITOR_TAB_URL",
+                tabId: tab.id,
+                chatId: id
+            });
+
+            // Temporarily set the URL to the new chat URL so UI updates
+            updateChat(id, { url: newChatUrl });
+            renderMainView(id, 'chat');
+            renderTree();
+        });
+    });
 }
 
 function handleSendMessage() {

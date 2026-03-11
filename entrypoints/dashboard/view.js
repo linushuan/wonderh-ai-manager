@@ -91,7 +91,7 @@ export function renderChatView(chat) {
     </div>
 
     <div id="chatContentArea">
-    ${renderMessagesHtml(chat.messages, chat.content)}
+    ${renderMessagesHtml(chat.messages, chat.content, chat.url)}
     </div>
 
     <div id="filePreviewContainer" class="file-preview-container"></div>
@@ -121,7 +121,7 @@ export function renderChatView(chat) {
     if (summaryEl) summaryEl.innerHTML = chat.summary ? esc(chat.summary) : 'No summary generated.';
 }
 
-function renderMessagesHtml(messages, content) {
+function renderMessagesHtml(messages, content, chatUrl) {
     if (messages && messages.length > 0) {
         return messages.map(m => {
             const roleClass = (m.role === 'user') ? 'msg-user' : 'msg-assistant';
@@ -146,9 +146,46 @@ function renderMessagesHtml(messages, content) {
     if (content && content.trim()) {
         return `<div class="content-raw markdown-body">${renderMarkdown(content)}</div>`;
     }
-    return `<div style="text-align:center; padding:40px; color:var(--text-muted);">
-    <p>No content synced yet.</p>
-    <p style="font-size:12px;">Paste a URL above and click SYNC CONTENT.</p>
+
+    // If there is a URL but no content, show the sync prompt
+    if (chatUrl && chatUrl.trim()) {
+        return `<div style="text-align:center; padding:40px; color:var(--text-muted);">
+        <p>No content synced yet.</p>
+        <p style="font-size:12px;">Click SYNC CONTENT to fetch the conversation.</p>
+        </div>`;
+    }
+
+    // Completely empty chat (no URL, no content) - show AI provider selection
+    return `
+    <div class="empty-chat-state">
+        <div class="empty-chat-icon">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        </div>
+        <h2>Start a New Conversation</h2>
+        <p>Select an AI assistant to begin a new chat or paste an existing URL above.</p>
+        
+        <div class="ai-provider-grid">
+            <button class="btn-provider provider-chatgpt" data-provider="chatgpt">
+                <div class="provider-icon">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A6.0651 6.0651 0 0 0 19.022 19.82a5.9847 5.9847 0 0 0 3.9977-2.9 6.0462 6.0462 0 0 0-.7378-7.0988zm-8.6253 11.229a4.3418 4.3418 0 0 1-3.6053-1.9213l.0673-.0382 5.2536-3.0331a.8804.8804 0 0 0 .4393-.7624v-6.7327l2.2533 1.3009v6.5936a4.4239 4.4239 0 0 1-4.4082 4.5932zm-7.668-3.3283a4.3466 4.3466 0 0 1 .1983-4.085l.0673.0382 5.2536 3.0331c.2538.1466.568.1466.8218 0l5.8306-3.3663v2.6017l-5.7176 3.3008a4.4239 4.4239 0 0 1-6.454-1.5225zm-2.0716-8.991c1.232-2.1337 3.966-2.864 6.0335-1.6146l5.8306 3.3663-2.2533 1.3009-5.7176-3.3008a.8661.8661 0 0 0-.8218 0l-5.2536 3.0331-.0673-.0382a4.4239 4.4239 0 0 1 2.2497-6.0713L3.917 8.7308zm14.156-1.5225c-.2538-.1466-.568-.1466-.8218 0l-5.2536 3.0331-.0673-.0382a4.3466 4.3466 0 0 1-.1983-4.085 4.4239 4.4239 0 0 1 6.454-1.5225l-2.113 3.6126zm3.3331 4.3986c0 2.4544-1.9904 4.4448-4.4448 4.4448v-2.6017l2.2533-1.3009a.8804.8804 0 0 0 .4393-.7624V8.5866l2.113-3.6126c-1.232-2.1337-3.966-2.864-6.0335-1.6146L8.8504 5.0456l2.113 3.6126a4.4239 4.4239 0 0 1 5.9388 4.0957z" /></svg>
+                </div>
+                <span>ChatGPT</span>
+            </button>
+            
+            <button class="btn-provider provider-claude" data-provider="claude">
+                <div class="provider-icon">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zM11 7h2v5.5l4.5 2.5-.75 1.5L11 13V7z"/></svg>
+                </div>
+                <span>Claude</span>
+            </button>
+            
+            <button class="btn-provider provider-gemini" data-provider="gemini">
+                <div class="provider-icon">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12.012 3.682c-.87-.662-2.108-.662-2.98 0l-5.06 3.84c-.458.348-.732.89-.732 1.465v7.68c0 .576.274 1.118.732 1.465l5.06 3.84c.87.662 2.108.662 2.98 0l5.06-3.84c.458-.348.732-.89.732-1.465v-7.68c0-.576-.274-1.118-.732-1.465l-5.06-3.84zm-1.49 10.999H9.418v-5.362h1.104v5.362zm1.61-4.821c-.426 0-.772-.345-.772-.77a.771.771 0 0 1 1.543 0c0 .425-.346.77-.771.77zm1.884 4.82h-1.104v-5.362h1.104v5.362z"/></svg>
+                </div>
+                <span>Gemini</span>
+            </button>
+        </div>
     </div>`;
 }
 

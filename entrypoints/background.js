@@ -141,7 +141,8 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
         }
         chrome.tabs.query({}, (tabs) => {
             void chrome.runtime.lastError;
-            const target = tabs.find(t => t.url && t.url.startsWith(req.url));
+            // More resilient matching: check if the tab URL includes the request URL
+            const target = tabs.find(t => t.url && t.url.includes(req.url));
             if (!target) {
                 sendResponse({ status: "error", msg: "No matching tab found", detail: `Open "${req.url}" in a tab first.` });
                 return;
@@ -251,7 +252,56 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     } else if (req.type === "IS_REXOW_OPEN") {
         sendResponse({ status: "ok", open: dashboardPorts.size > 0 });
         return true;
+    } else if (req.type === "MONITOR_TAB_URL") {
+        const { tabId, chatId } = req;
+        if (tabId && chatId) {
+            monitoredTabs.set(tabId, { chatId });
+        }
+        sendResponse({ status: "ok" });
+        return true;
     }
+});
+
+// Map of tabId -> { chatId }
+const monitoredTabs = new Map();
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    // Only monitor when a tab's URL changes and it finishes loading
+    if (changeInfo.status === 'complete' && tab.url && monitoredTabs.has(tabId)) {
+        const info = monitoredTabs.get(tabId);
+
+        // Ignore the root URLs if they are still loading 
+        // (Wait for them to redirect or generate an ID)
+        const isRootUrl =
+            tab.url === 'https://chatgpt.com/' ||
+            tab.url === 'https://claude.ai/new' ||
+            tab.url === 'https://gemini.google.com/app';
+
+        // If it's a specific conversation or just anything else, capture it
+        // We'll capture it even if it's root for now, dashboard will update it.
+        // Dashboard will get this message through the long-lived port
+        const msg = {
+            type: "UPDATE_CHAT_URL",
+            payload: { chatId: info.chatId, url: tab.url }
+        };
+
+        dashboardPorts.forEach(p => {
+            try { p.postMessage(msg); } catch (_) { dashboardPorts.delete(p); }
+        });
+
+        // If the URL has a specific path (not just the root), we assume it's settled on an ID
+        // and we can stop monitoring to save resources
+        let urlObj;
+        try { urlObj = new URL(tab.url); } catch (e) { }
+
+        if (urlObj && urlObj.pathname && urlObj.pathname.length > 5 && !isRootUrl) {
+            monitoredTabs.delete(tabId);
+        }
+    }
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+    monitoredTabs.delete(tabId);
 });
 
 chrome.action.onClicked.addListener(() => {

@@ -57,10 +57,10 @@ export default class GeminiAdapter {
     }
 
     /**
-     * Strip known prefixes from user query text (e.g. "你說了" added by Gemini UI).
+     * Strip known prefixes from user query text (e.g. "你說了" or "You said" added by Gemini UI).
      */
     _cleanUserText(text) {
-        return text.replace(/^你說了\s*/, '');
+        return text.replace(/^(你說了|You said):\s*/i, '').replace(/^(你說了|You said)\s*/i, '');
     }
 
     /**
